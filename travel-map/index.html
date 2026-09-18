@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Travels 2019–2021</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<style>
+  html, body { margin: 0; height: 100%; font-family: -apple-system, system-ui, sans-serif; }
+  #map { position: absolute; inset: 0; background: #f5f5f3; }
+
+  .title-card {
+    position: absolute; top: 16px; left: 16px; z-index: 1000;
+    background: rgba(255,255,255,.92); backdrop-filter: blur(6px);
+    padding: 12px 16px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.12);
+  }
+  .title-card h1 { margin: 0; font-size: 1.05rem; font-weight: 650; color: #1a1a1a; letter-spacing: -.01em; }
+  .title-card p { margin: 3px 0 0; font-size: .78rem; color: #777; }
+
+  .year-filter {
+    position: absolute; top: 16px; right: 16px; z-index: 1000; display: flex; gap: 6px;
+    background: rgba(255,255,255,.92); backdrop-filter: blur(6px);
+    padding: 6px; border-radius: 12px; box-shadow: 0 2px 12px rgba(0,0,0,.12);
+  }
+  .year-filter button {
+    border: none; background: transparent; padding: 6px 12px; border-radius: 8px;
+    font-size: .82rem; font-weight: 600; color: #555; cursor: pointer; transition: all .12s;
+  }
+  .year-filter button:hover { background: #eee; }
+  .year-filter button.active { color: #fff; }
+
+  .legend {
+    position: absolute; bottom: 20px; left: 16px; z-index: 1000;
+    background: rgba(255,255,255,.92); backdrop-filter: blur(6px);
+    padding: 10px 14px; border-radius: 10px; box-shadow: 0 2px 12px rgba(0,0,0,.12);
+    font-size: .78rem; color: #444;
+  }
+  .legend .row { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+  .legend .dot { width: 11px; height: 11px; border-radius: 50%; border: 2px solid #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.15); }
+
+  .leaflet-popup-content-wrapper { border-radius: 14px; padding: 0; overflow: hidden; box-shadow: 0 6px 24px rgba(0,0,0,.18); }
+  .leaflet-popup-content { margin: 0; width: 260px !important; }
+  .pop-img { width: 100%; height: 180px; object-fit: cover; display: block; }
+  .pop-body { padding: 12px 14px 14px; }
+  .pop-name { font-size: 1rem; font-weight: 650; color: #1a1a1a; line-height: 1.2; }
+  .pop-year { display: inline-block; margin-top: 6px; padding: 2px 9px; border-radius: 20px;
+              font-size: .72rem; font-weight: 700; color: #fff; }
+  .pop-reflection { margin: 9px 0 0; font-size: .86rem; line-height: 1.45; color: #444; }
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="title-card">
+  <h1>Travels 2019–2021</h1>
+  <p>Click a pin for the photo and a note.</p>
+</div>
+
+<div class="year-filter" id="yearFilter"></div>
+
+<div class="legend" id="legend"></div>
+
+<script>
+const LOCATIONS = [{"name":"Washington","year":2019,"lat":38.8977,"lng":-77.0365,"photo":"photos/washington.jpg","reflection":"Stood at the fence like every other tourist. Still got me, seeing it in person."},{"name":"Durham","year":2019,"lat":36.0016,"lng":-78.9403,"photo":"photos/durham.jpg","reflection":"The chapel with the blossoms out front. Spring showed up right on time that year."},{"name":"Duke University","year":2019,"lat":36.0014,"lng":-78.9382,"photo":"photos/duke_university.jpg","reflection":"Sat inside the chapel and mostly just looked up. Photos don't do the ceiling justice."},{"name":"New York","year":2019,"lat":40.7484,"lng":-73.9857,"photo":"photos/new_york.jpg","reflection":"Saw the skyline from up high for the first time. The Chrysler Building holds up in person."},{"name":"Chapel Hill","year":2019,"lat":35.9132,"lng":-79.0558,"photo":"photos/chapel_hill.jpg","reflection":"Out in the crowd after dark. One of those nights the whole town was in the street."},{"name":"South Bend","year":2019,"lat":41.6764,"lng":-86.252,"photo":"photos/south_bend.jpg","reflection":"Post-flight spread on the counter. Sweet tea and whatever was left out — exactly what I needed."},{"name":"Arlington","year":2019,"lat":38.8783,"lng":-77.0687,"photo":"photos/arlington.jpg","reflection":"Quiet morning at the amphitheater. Some places make you lower your voice without thinking about it."},{"name":"Duke East Campus","year":2019,"lat":36.0098,"lng":-78.9139,"photo":"photos/duke_east_campus.jpg","reflection":"Bare trees and scaffolding, blue sky over all of it. Campus in the in-between season."},{"name":"University of North Carolina at Chapel Hill","year":2019,"lat":35.912,"lng":-79.051,"photo":"photos/unc_chapel_hill.jpg","reflection":"Made it to the Old Well. Had to do the walk everyone tells you about."},{"name":"Tallahassee","year":2019,"lat":30.4383,"lng":-84.2807,"photo":"photos/tallahassee.jpg","reflection":"Rained most of the day. Stood under the oaks and waited it out."},{"name":"Merritt Island","year":2020,"lat":28.36,"lng":-80.7,"photo":"photos/merritt_island.jpg","reflection":"Christmas on the island. Gifts everywhere and nowhere we had to be."},{"name":"New Orleans","year":2020,"lat":29.945,"lng":-90.06,"photo":"photos/new_orleans.jpg","reflection":"Grey sky over the river, bridge running off into it. Didn't need the sun for this one."},{"name":"Cochabamba","year":2020,"lat":-17.3895,"lng":-66.1568,"photo":"photos/cochabamba.jpg","reflection":"Afternoon in the field, no plan to speak of. Some of the best days go like that."},{"name":"Atlanta","year":2020,"lat":33.7907,"lng":-84.3733,"photo":"photos/atlanta.jpg","reflection":"The garden had that giant living sculpture. Stood there longer than I'll admit."},{"name":"Edmonston","year":2020,"lat":38.9457,"lng":-76.9316,"photo":"photos/edmonston.jpg","reflection":"Burger and fried plantains, which is the only right way to do it."},{"name":"Hyattsville","year":2020,"lat":38.9559,"lng":-76.9455,"photo":"photos/hyattsville.jpg","reflection":"In the car before heading out. Fresh braids, long day ahead."},{"name":"Downtown","year":2020,"lat":35.9917,"lng":-78.9028,"photo":"photos/downtown.jpg","reflection":"Ballpark at dusk, nothing riding on the game. Just a good place to sit for a while.","needs_review":true},{"name":"Tysons","year":2020,"lat":38.9187,"lng":-77.2311,"photo":"photos/tysons.jpg","reflection":"Courts were empty under a grey sky. Had the whole place to myself."},{"name":"Jinja","year":2020,"lat":0.4244,"lng":33.2041,"photo":"photos/jinja.jpg","reflection":"Cake by the Nile. Still can't believe that sentence is true."},{"name":"Chicago","year":2020,"lat":41.9742,"lng":-87.9073,"photo":"photos/chicago.jpg","reflection":"Just passing through, like always with this airport. Watched the terminal move for a bit."},{"name":"Silver Spring","year":2020,"lat":38.9907,"lng":-77.0261,"photo":"photos/silver_spring.jpg","reflection":"Evening on the courts, sun going down behind the pines. Didn't want to head in."},{"name":"Dublin","year":2020,"lat":53.3478,"lng":-6.2306,"photo":"photos/dublin.jpg","reflection":"Grey the whole time and I didn't mind. Walked the Liffey until my feet gave out."},{"name":"Baltimore","year":2020,"lat":39.2904,"lng":-76.6122,"photo":"photos/baltimore.jpg","reflection":"Barbecue out of the container, mac and beans on the side. No plates, no complaints."},{"name":"Reston","year":2020,"lat":38.9586,"lng":-77.357,"photo":"photos/reston.jpg","reflection":"Sun in the mirror on the way out. Nothing to the photo, but I remember the drive."},{"name":"Nassau","year":2020,"lat":25.0443,"lng":-77.3504,"photo":"photos/nassau.jpg","reflection":"Ended the day out on the water. Didn't get a good shot until the sun did the work for me."},{"name":"Columbia","year":2021,"lat":39.2037,"lng":-76.861,"photo":"photos/columbia.jpg","reflection":"Something going on behind the fence, music in the distance. Summer starting to open back up."},{"name":"Cambridge","year":2021,"lat":42.3736,"lng":-71.1097,"photo":"photos/cambridge.jpg","reflection":"Rooftops and the skyline past them, everything turning. Fall came in fast that year."},{"name":"Chillum","year":2021,"lat":38.964,"lng":-76.983,"photo":"photos/chillum.jpg","reflection":"Went looking for a teapot and left with more than that. Half the fun is the browsing."},{"name":"Njeru","year":2021,"lat":0.453,"lng":33.156,"photo":"photos/njeru.jpg","reflection":"Open field, one person way off in the distance. Quiet in a way I still think about."},{"name":"Raleigh","year":2021,"lat":35.7796,"lng":-78.6382,"photo":"photos/raleigh.jpg","reflection":"Pumpkins with the masks still on. That was the fall we had, and it was still a good one."},{"name":"North Myrtle Beach","year":2021,"lat":33.816,"lng":-78.68,"photo":"photos/north_myrtle_beach.jpg","reflection":"Sun going down over the low roofs. Stood on the balcony till it was gone."},{"name":"Boston","year":2021,"lat":42.3551,"lng":-71.0656,"photo":"photos/boston.jpg","reflection":"Cut through the Common with the skyline ahead. Grey day, good walk."},{"name":"Mishawaka","year":2021,"lat":41.662,"lng":-86.1586,"photo":"photos/mishawaka.jpg","reflection":"Meet day on the red track. Cold in the stands, worth it."},{"name":"Tropical Park","year":2021,"lat":25.729,"lng":-80.329,"photo":"photos/tropical_park.jpg","reflection":"Holiday plate in Miami, the table packed. These are the ones I hold onto."},{"name":"College Park","year":2021,"lat":38.9807,"lng":-76.937,"photo":"photos/college_park.jpg","reflection":"Milkshake in the car, red shirt, no reason. Small good moment on an ordinary day."},{"name":"Riverdale Park","year":2021,"lat":38.964,"lng":-76.928,"photo":"photos/riverdale_park.jpg","reflection":"Walked the pup through the frost. She was less into the cold than I was."},{"name":"Philadelphia","year":2021,"lat":39.9526,"lng":-75.1652,"photo":"photos/philadelphia.jpg","reflection":"Brunch that took over the whole table. Bagels, coffee, and no rush to be anywhere."},{"name":"Somerville","year":2021,"lat":42.3876,"lng":-71.0995,"photo":"photos/somerville.jpg","reflection":"Cookie the size of my hand, eaten on the walk. Sometimes that's the whole outing."},{"name":"Cardiff","year":2021,"lat":51.4816,"lng":-3.1791,"photo":"photos/cardiff.jpg","reflection":"Pizza and a glass of red after a long day. Nothing fancy, and that was the point."},{"name":"Orlando","year":2021,"lat":28.5383,"lng":-81.3792,"photo":"photos/orlando.jpg","reflection":"French toast and fries because why choose. Slow morning, exactly right."}];
+
+const YEAR_COLORS = { 2019: "#0d9488", 2020: "#d97706", 2021: "#e11d48" };
+const YEARS = [2019, 2020, 2021];
+
+const map = L.map("map", { zoomControl: false, worldCopyJump: true });
+L.control.zoom({ position: "bottomright" }).addTo(map);
+
+L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
+  subdomains: "abcd", maxZoom: 19,
+}).addTo(map);
+
+function popupHtml(loc) {
+  const color = YEAR_COLORS[loc.year];
+  return `<img class="pop-img" src="${loc.photo}" alt="${loc.name}">
+    <div class="pop-body">
+      <div class="pop-name">${loc.name}</div>
+      <span class="pop-year" style="background:${color}">${loc.year}</span>
+      <p class="pop-reflection">${loc.reflection}</p>
+    </div>`;
+}
+
+// One layer group per year
+const layers = {};
+YEARS.forEach(y => layers[y] = L.layerGroup());
+
+LOCATIONS.forEach(loc => {
+  const marker = L.circleMarker([loc.lat, loc.lng], {
+    radius: 8, weight: 2, color: "#fff",
+    fillColor: YEAR_COLORS[loc.year], fillOpacity: 1,
+  }).bindPopup(popupHtml(loc), { closeButton: true, maxWidth: 260 });
+  marker.on("mouseover", function () { this.setStyle({ radius: 11 }); });
+  marker.on("mouseout", function () { this.setStyle({ radius: 8 }); });
+  layers[loc.year].addLayer(marker);
+});
+
+function visibleBounds(activeYears) {
+  const pts = LOCATIONS.filter(l => activeYears.includes(l.year)).map(l => [l.lat, l.lng]);
+  return L.latLngBounds(pts);
+}
+
+let current = "all";
+function render(sel) {
+  current = sel;
+  const active = sel === "all" ? YEARS : [sel];
+  YEARS.forEach(y => {
+    if (active.includes(y)) layers[y].addTo(map);
+    else map.removeLayer(layers[y]);
+  });
+  map.fitBounds(visibleBounds(active), { padding: [60, 60], maxZoom: 8 });
+  // button states
+  document.querySelectorAll("#yearFilter button").forEach(b => {
+    const on = b.dataset.sel === String(sel);
+    b.classList.toggle("active", on);
+    b.style.background = on ? (sel === "all" ? "#1a1a1a" : YEAR_COLORS[sel]) : "";
+  });
+}
+
+// Build filter buttons
+const filter = document.getElementById("yearFilter");
+[["all", "All"], [2019, "2019"], [2020, "2020"], [2021, "2021"]].forEach(([sel, label]) => {
+  const b = document.createElement("button");
+  b.textContent = label; b.dataset.sel = String(sel);
+  b.onclick = () => render(sel === "all" ? "all" : Number(sel));
+  filter.appendChild(b);
+});
+
+// Legend
+document.getElementById("legend").innerHTML = YEARS.map(y =>
+  `<div class="row"><span class="dot" style="background:${YEAR_COLORS[y]}"></span>${y}</div>`
+).join("");
+
+render("all");
+</script>
+</body>
+</html>

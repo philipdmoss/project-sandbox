@@ -1,0 +1,323 @@
+[
+  {
+    "name": "Washington",
+    "year": 2019,
+    "lat": 38.8977,
+    "lng": -77.0365,
+    "photo": "photos/washington.jpg",
+    "reflection": "Stood at the fence like every other tourist. Still got me, seeing it in person."
+  },
+  {
+    "name": "Durham",
+    "year": 2019,
+    "lat": 36.0016,
+    "lng": -78.9403,
+    "photo": "photos/durham.jpg",
+    "reflection": "The chapel with the blossoms out front. Spring showed up right on time that year."
+  },
+  {
+    "name": "Duke University",
+    "year": 2019,
+    "lat": 36.0014,
+    "lng": -78.9382,
+    "photo": "photos/duke_university.jpg",
+    "reflection": "Sat inside the chapel and mostly just looked up. Photos don't do the ceiling justice."
+  },
+  {
+    "name": "New York",
+    "year": 2019,
+    "lat": 40.7484,
+    "lng": -73.9857,
+    "photo": "photos/new_york.jpg",
+    "reflection": "Saw the skyline from up high for the first time. The Chrysler Building holds up in person."
+  },
+  {
+    "name": "Chapel Hill",
+    "year": 2019,
+    "lat": 35.9132,
+    "lng": -79.0558,
+    "photo": "photos/chapel_hill.jpg",
+    "reflection": "Out in the crowd after dark. One of those nights the whole town was in the street."
+  },
+  {
+    "name": "South Bend",
+    "year": 2019,
+    "lat": 41.6764,
+    "lng": -86.252,
+    "photo": "photos/south_bend.jpg",
+    "reflection": "Post-flight spread on the counter. Sweet tea and whatever was left out — exactly what I needed."
+  },
+  {
+    "name": "Arlington",
+    "year": 2019,
+    "lat": 38.8783,
+    "lng": -77.0687,
+    "photo": "photos/arlington.jpg",
+    "reflection": "Quiet morning at the amphitheater. Some places make you lower your voice without thinking about it."
+  },
+  {
+    "name": "Duke East Campus",
+    "year": 2019,
+    "lat": 36.0098,
+    "lng": -78.9139,
+    "photo": "photos/duke_east_campus.jpg",
+    "reflection": "Bare trees and scaffolding, blue sky over all of it. Campus in the in-between season."
+  },
+  {
+    "name": "University of North Carolina at Chapel Hill",
+    "year": 2019,
+    "lat": 35.912,
+    "lng": -79.051,
+    "photo": "photos/unc_chapel_hill.jpg",
+    "reflection": "Made it to the Old Well. Had to do the walk everyone tells you about."
+  },
+  {
+    "name": "Tallahassee",
+    "year": 2019,
+    "lat": 30.4383,
+    "lng": -84.2807,
+    "photo": "photos/tallahassee.jpg",
+    "reflection": "Rained most of the day. Stood under the oaks and waited it out."
+  },
+  {
+    "name": "Merritt Island",
+    "year": 2020,
+    "lat": 28.36,
+    "lng": -80.7,
+    "photo": "photos/merritt_island.jpg",
+    "reflection": "Christmas on the island. Gifts everywhere and nowhere we had to be."
+  },
+  {
+    "name": "New Orleans",
+    "year": 2020,
+    "lat": 29.945,
+    "lng": -90.06,
+    "photo": "photos/new_orleans.jpg",
+    "reflection": "Grey sky over the river, bridge running off into it. Didn't need the sun for this one."
+  },
+  {
+    "name": "Cochabamba",
+    "year": 2020,
+    "lat": -17.3895,
+    "lng": -66.1568,
+    "photo": "photos/cochabamba.jpg",
+    "reflection": "Afternoon in the field, no plan to speak of. Some of the best days go like that."
+  },
+  {
+    "name": "Atlanta",
+    "year": 2020,
+    "lat": 33.7907,
+    "lng": -84.3733,
+    "photo": "photos/atlanta.jpg",
+    "reflection": "The garden had that giant living sculpture. Stood there longer than I'll admit."
+  },
+  {
+    "name": "Edmonston",
+    "year": 2020,
+    "lat": 38.9457,
+    "lng": -76.9316,
+    "photo": "photos/edmonston.jpg",
+    "reflection": "Burger and fried plantains, which is the only right way to do it."
+  },
+  {
+    "name": "Hyattsville",
+    "year": 2020,
+    "lat": 38.9559,
+    "lng": -76.9455,
+    "photo": "photos/hyattsville.jpg",
+    "reflection": "In the car before heading out. Fresh braids, long day ahead."
+  },
+  {
+    "name": "Downtown",
+    "year": 2020,
+    "lat": 35.9917,
+    "lng": -78.9028,
+    "photo": "photos/downtown.jpg",
+    "reflection": "Ballpark at dusk, nothing riding on the game. Just a good place to sit for a while.",
+    "needs_review": true
+  },
+  {
+    "name": "Tysons",
+    "year": 2020,
+    "lat": 38.9187,
+    "lng": -77.2311,
+    "photo": "photos/tysons.jpg",
+    "reflection": "Courts were empty under a grey sky. Had the whole place to myself."
+  },
+  {
+    "name": "Jinja",
+    "year": 2020,
+    "lat": 0.4244,
+    "lng": 33.2041,
+    "photo": "photos/jinja.jpg",
+    "reflection": "Cake by the Nile. Still can't believe that sentence is true."
+  },
+  {
+    "name": "Chicago",
+    "year": 2020,
+    "lat": 41.9742,
+    "lng": -87.9073,
+    "photo": "photos/chicago.jpg",
+    "reflection": "Just passing through, like always with this airport. Watched the terminal move for a bit."
+  },
+  {
+    "name": "Silver Spring",
+    "year": 2020,
+    "lat": 38.9907,
+    "lng": -77.0261,
+    "photo": "photos/silver_spring.jpg",
+    "reflection": "Evening on the courts, sun going down behind the pines. Didn't want to head in."
+  },
+  {
+    "name": "Dublin",
+    "year": 2020,
+    "lat": 53.3478,
+    "lng": -6.2306,
+    "photo": "photos/dublin.jpg",
+    "reflection": "Grey the whole time and I didn't mind. Walked the Liffey until my feet gave out."
+  },
+  {
+    "name": "Baltimore",
+    "year": 2020,
+    "lat": 39.2904,
+    "lng": -76.6122,
+    "photo": "photos/baltimore.jpg",
+    "reflection": "Barbecue out of the container, mac and beans on the side. No plates, no complaints."
+  },
+  {
+    "name": "Reston",
+    "year": 2020,
+    "lat": 38.9586,
+    "lng": -77.357,
+    "photo": "photos/reston.jpg",
+    "reflection": "Sun in the mirror on the way out. Nothing to the photo, but I remember the drive."
+  },
+  {
+    "name": "Nassau",
+    "year": 2020,
+    "lat": 25.0443,
+    "lng": -77.3504,
+    "photo": "photos/nassau.jpg",
+    "reflection": "Ended the day out on the water. Didn't get a good shot until the sun did the work for me."
+  },
+  {
+    "name": "Columbia",
+    "year": 2021,
+    "lat": 39.2037,
+    "lng": -76.861,
+    "photo": "photos/columbia.jpg",
+    "reflection": "Something going on behind the fence, music in the distance. Summer starting to open back up."
+  },
+  {
+    "name": "Cambridge",
+    "year": 2021,
+    "lat": 42.3736,
+    "lng": -71.1097,
+    "photo": "photos/cambridge.jpg",
+    "reflection": "Rooftops and the skyline past them, everything turning. Fall came in fast that year."
+  },
+  {
+    "name": "Chillum",
+    "year": 2021,
+    "lat": 38.964,
+    "lng": -76.983,
+    "photo": "photos/chillum.jpg",
+    "reflection": "Went looking for a teapot and left with more than that. Half the fun is the browsing."
+  },
+  {
+    "name": "Njeru",
+    "year": 2021,
+    "lat": 0.453,
+    "lng": 33.156,
+    "photo": "photos/njeru.jpg",
+    "reflection": "Open field, one person way off in the distance. Quiet in a way I still think about."
+  },
+  {
+    "name": "Raleigh",
+    "year": 2021,
+    "lat": 35.7796,
+    "lng": -78.6382,
+    "photo": "photos/raleigh.jpg",
+    "reflection": "Pumpkins with the masks still on. That was the fall we had, and it was still a good one."
+  },
+  {
+    "name": "North Myrtle Beach",
+    "year": 2021,
+    "lat": 33.816,
+    "lng": -78.68,
+    "photo": "photos/north_myrtle_beach.jpg",
+    "reflection": "Sun going down over the low roofs. Stood on the balcony till it was gone."
+  },
+  {
+    "name": "Boston",
+    "year": 2021,
+    "lat": 42.3551,
+    "lng": -71.0656,
+    "photo": "photos/boston.jpg",
+    "reflection": "Cut through the Common with the skyline ahead. Grey day, good walk."
+  },
+  {
+    "name": "Mishawaka",
+    "year": 2021,
+    "lat": 41.662,
+    "lng": -86.1586,
+    "photo": "photos/mishawaka.jpg",
+    "reflection": "Meet day on the red track. Cold in the stands, worth it."
+  },
+  {
+    "name": "Tropical Park",
+    "year": 2021,
+    "lat": 25.729,
+    "lng": -80.329,
+    "photo": "photos/tropical_park.jpg",
+    "reflection": "Holiday plate in Miami, the table packed. These are the ones I hold onto."
+  },
+  {
+    "name": "College Park",
+    "year": 2021,
+    "lat": 38.9807,
+    "lng": -76.937,
+    "photo": "photos/college_park.jpg",
+    "reflection": "Milkshake in the car, red shirt, no reason. Small good moment on an ordinary day."
+  },
+  {
+    "name": "Riverdale Park",
+    "year": 2021,
+    "lat": 38.964,
+    "lng": -76.928,
+    "photo": "photos/riverdale_park.jpg",
+    "reflection": "Walked the pup through the frost. She was less into the cold than I was."
+  },
+  {
+    "name": "Philadelphia",
+    "year": 2021,
+    "lat": 39.9526,
+    "lng": -75.1652,
+    "photo": "photos/philadelphia.jpg",
+    "reflection": "Brunch that took over the whole table. Bagels, coffee, and no rush to be anywhere."
+  },
+  {
+    "name": "Somerville",
+    "year": 2021,
+    "lat": 42.3876,
+    "lng": -71.0995,
+    "photo": "photos/somerville.jpg",
+    "reflection": "Cookie the size of my hand, eaten on the walk. Sometimes that's the whole outing."
+  },
+  {
+    "name": "Cardiff",
+    "year": 2021,
+    "lat": 51.4816,
+    "lng": -3.1791,
+    "photo": "photos/cardiff.jpg",
+    "reflection": "Pizza and a glass of red after a long day. Nothing fancy, and that was the point."
+  },
+  {
+    "name": "Orlando",
+    "year": 2021,
+    "lat": 28.5383,
+    "lng": -81.3792,
+    "photo": "photos/orlando.jpg",
+    "reflection": "French toast and fries because why choose. Slow morning, exactly right."
+  }
+]
