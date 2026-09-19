@@ -7,7 +7,6 @@ import (
 	"log"
 	"math/rand"
 	"net/http"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -22,18 +21,6 @@ var unitarianUniversalistPrinciples = []string{
 	"The right of conscience and the use of the democratic process within our congregations and in society at large",
 	"The goal of world community with peace, liberty, and justice for all",
 	"Respect for the interdependent web of all existence of which we are a part",
-}
-
-type upstreamResponse struct {
-	Status  string `json:"status"`
-	Results struct {
-		Sunrise            string `json:"sunrise"`
-		Sunset             string `json:"sunset"`
-		SolarNoon          string `json:"solar_noon"`
-		DayLength          int    `json:"day_length"`
-		CivilTwilightBegin string `json:"civil_twilight_begin"`
-		CivilTwilightEnd   string `json:"civil_twilight_end"`
-	} `json:"results"`
 }
 
 type twilightWindow struct {
@@ -52,54 +39,6 @@ type SunTimesResponse struct {
 	MorningGoldenHour twilightWindow `json:"morning_golden_hour"`
 	EveningGoldenHour twilightWindow `json:"evening_golden_hour"`
 	EveningBlueHour   twilightWindow `json:"evening_blue_hour"`
-}
-
-const sunApiEndpoint = "https://api.sunrise-sunset.org/json"
-
-func fetchSunTimes(lat, lng string) (upstreamResponse, error) {
-	var parsed upstreamResponse
-
-	query := url.Values{}
-	query.Set("lat", lat)
-	query.Set("lng", lng)
-	query.Set("formatted", "0")
-	requestURL := sunApiEndpoint + "?" + query.Encode()
-
-	resp, err := http.Get(requestURL)
-	if err != nil {
-		return parsed, fmt.Errorf("contacting upstream API: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
-		return parsed, fmt.Errorf("decoding upstream response: %w", err)
-	}
-	if parsed.Status != "OK" {
-		return parsed, fmt.Errorf("upstream API returned status %q", parsed.Status)
-	}
-	return parsed, nil
-}
-
-func newTwilightWindow(start, end time.Time) twilightWindow {
-	span := end.Sub(start)
-	if span < 0 {
-		span = -span
-	}
-	return twilightWindow{
-		Start:    start.Format(time.RFC3339),
-		End:      end.Format(time.RFC3339),
-		Duration: span.String(),
-	}
-}
-
-func morningGoldenHour(sunrise, civilTwilightBegin time.Time) twilightWindow {
-	span := sunrise.Sub(civilTwilightBegin)
-	return newTwilightWindow(sunrise, sunrise.Add(span))
-}
-
-func eveningGoldenHour(sunset, civilTwilightEnd time.Time) twilightWindow {
-	span := civilTwilightEnd.Sub(sunset)
-	return newTwilightWindow(sunset.Add(-span), sunset)
 }
 
 // parseCoords reads and validates the `lat`/`lng` query parameters as decimal
@@ -124,50 +63,38 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Yes, I'm here.\n\n%s\n", principle)
 }
 
+// sunTimesHandler returns today's sun times for a location as JSON, computed
+// locally with the NOAA solar equations (no external API call).
 func sunTimesHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Content-Type", "application/json")
 
-	lat := r.URL.Query().Get("lat")
-	lng := r.URL.Query().Get("lng")
-	if lat == "" || lng == "" {
-		http.Error(w, `{"error": "Missing 'lat' or 'lng' parameters"}`, http.StatusBadRequest)
-		return
-	}
-
-	upstream, err := fetchSunTimes(lat, lng)
+	lat, lng, err := parseCoords(r)
 	if err != nil {
-		log.Printf("sun times lookup failed for lat=%s lng=%s: %v", lat, lng, err)
-		http.Error(w, `{"error": "Failed to retrieve sun times"}`, http.StatusBadGateway)
+		http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusBadRequest)
 		return
 	}
 
-	sunrise, sunriseErr := time.Parse(time.RFC3339, upstream.Results.Sunrise)
-	sunset, sunsetErr := time.Parse(time.RFC3339, upstream.Results.Sunset)
-	solarNoon, solarNoonErr := time.Parse(time.RFC3339, upstream.Results.SolarNoon)
-	civilTwilightBegin, civilBeginErr := time.Parse(time.RFC3339, upstream.Results.CivilTwilightBegin)
-	civilTwilightEnd, civilEndErr := time.Parse(time.RFC3339, upstream.Results.CivilTwilightEnd)
-	if sunriseErr != nil || sunsetErr != nil || solarNoonErr != nil || civilBeginErr != nil || civilEndErr != nil {
-		log.Printf("failed to parse upstream timestamps for lat=%s lng=%s: sunrise=%v sunset=%v solarNoon=%v civilBegin=%v civilEnd=%v",
-			lat, lng, sunriseErr, sunsetErr, solarNoonErr, civilBeginErr, civilEndErr)
-		http.Error(w, `{"error": "Unexpected upstream response format"}`, http.StatusBadGateway)
+	day := computeSolarDay(time.Now().UTC(), lat, lng)
+	if !day.ok {
+		http.Error(w, `{"error": "The sun does not rise and set at this location today"}`, http.StatusUnprocessableEntity)
 		return
 	}
 
 	response := SunTimesResponse{
 		Status:            "success",
-		Sunrise:           sunrise.Format(time.RFC3339),
-		Sunset:            sunset.Format(time.RFC3339),
-		SolarNoon:         solarNoon.Format(time.RFC3339),
-		DayLength:         (time.Duration(upstream.Results.DayLength) * time.Second).String(),
-		MorningBlueHour:   newTwilightWindow(civilTwilightBegin, sunrise),
-		MorningGoldenHour: morningGoldenHour(sunrise, civilTwilightBegin),
-		EveningGoldenHour: eveningGoldenHour(sunset, civilTwilightEnd),
-		EveningBlueHour:   newTwilightWindow(sunset, civilTwilightEnd),
+		Sunrise:           day.Sunrise().UTC().Format(time.RFC3339),
+		Sunset:            day.Sunset().UTC().Format(time.RFC3339),
+		SolarNoon:         day.SolarNoon().UTC().Format(time.RFC3339),
+		DayLength:         day.DayLength().Round(time.Second).String(),
+		MorningBlueHour:   rangeWindow(day.MorningBlueHour()),
+		MorningGoldenHour: rangeWindow(day.MorningGoldenHour()),
+		EveningGoldenHour: rangeWindow(day.EveningGoldenHour()),
+		EveningBlueHour:   rangeWindow(day.EveningBlueHour()),
 	}
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		log.Printf("failed to encode response for lat=%s lng=%s: %v", lat, lng, err)
+		log.Printf("failed to encode suntimes response for lat=%f lng=%f: %v", lat, lng, err)
 	}
 }
 

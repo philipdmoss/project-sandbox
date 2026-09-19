@@ -11,8 +11,10 @@ Run: `go run .` (listens on `:8080`, override with `PORT`).
 Liveness check.
 
 ### `GET /api/suntimes?lat=&lng=`
-Sun times for **today** at a location, as JSON. Proxies
-`api.sunrise-sunset.org` and derives the twilight windows.
+Sun times for **today** (UTC) at a location, as JSON: sunrise, sunset, solar
+noon, day length and the four twilight windows. Computed locally with the NOAA
+solar equations — no external API call. For an arbitrary date or a subset of
+values, use `/api/solar` below.
 
 ### `GET /api/solar?lat=&lng=&date=&field=`
 Individual sun values (or all of them) for a location on a date, as JSON,
