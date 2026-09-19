@@ -34,6 +34,7 @@ export interface PhaseSegment {
 export interface TimelineMarker {
   label: string;
   at: Date;
+  phase: "blue" | "golden" | "day";
 }
 
 export interface Moment {
@@ -99,13 +100,13 @@ export function buildSegments(data: SunTimesResponse): PhaseSegment[] {
 
 export function buildTimeline(data: SunTimesResponse): TimelineMarker[] {
   return [
-    { label: "Dawn", at: new Date(data.morning_blue_hour.start) },
-    { label: "Sunrise", at: new Date(data.sunrise) },
-    { label: "Golden ends", at: new Date(data.morning_golden_hour.end) },
-    { label: "Solar noon", at: new Date(data.solar_noon) },
-    { label: "Golden starts", at: new Date(data.evening_golden_hour.start) },
-    { label: "Sunset", at: new Date(data.sunset) },
-    { label: "Dusk", at: new Date(data.evening_blue_hour.end) },
+    { label: "Blue hour starts", at: new Date(data.morning_blue_hour.start), phase: "blue" },
+    { label: "Sunrise", at: new Date(data.sunrise), phase: "golden" },
+    { label: "Golden hour ends", at: new Date(data.morning_golden_hour.end), phase: "golden" },
+    { label: "Solar noon", at: new Date(data.solar_noon), phase: "day" },
+    { label: "Golden hour starts", at: new Date(data.evening_golden_hour.start), phase: "golden" },
+    { label: "Sunset", at: new Date(data.sunset), phase: "golden" },
+    { label: "Blue hour ends", at: new Date(data.evening_blue_hour.end), phase: "blue" },
   ];
 }
 
@@ -164,10 +165,17 @@ export function formatCountdown(ms: number): string {
   return `${seconds}s`;
 }
 
-export function formatClock(date: Date, timeZone?: string): string {
+export function formatClock(
+  date: Date,
+  timeZone?: string,
+  showSeconds = false,
+  showZone = false,
+): string {
   return new Intl.DateTimeFormat("en-US", {
     hour: "numeric",
     minute: "2-digit",
+    ...(showSeconds && { second: "2-digit" }),
+    ...(showZone && { timeZoneName: "short" }),
     timeZone,
   }).format(date);
 }
