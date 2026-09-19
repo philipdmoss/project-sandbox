@@ -50,7 +50,10 @@ export default function Home() {
           `${API_BASE}/api/suntimes?lat=${lat}&lng=${lng}`,
         );
         if (!response.ok) {
-          throw new Error("The solar engine could not compute this location.");
+          const body = await response.json().catch(() => null);
+          throw new Error(
+            body?.error ?? "The solar engine could not compute this location.",
+          );
         }
         const payload: SunTimesResponse = await response.json();
         setData(payload);
