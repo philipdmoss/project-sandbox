@@ -118,7 +118,7 @@ export default function Home() {
       <PhaseBackground phase={phase} />
       <div className="mx-auto w-full max-w-4xl px-4 py-12 sm:py-16">
         <header className="mb-8">
-          <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">
+          <h1 className="font-playfair text-3xl font-semibold tracking-tight sm:text-4xl">
             Sun Times
           </h1>
           <p className="mt-1 text-sm text-white/70">
