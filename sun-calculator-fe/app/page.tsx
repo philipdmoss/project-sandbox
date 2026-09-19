@@ -6,18 +6,20 @@ import {
   type PositionResponse,
   type SunTimesResponse,
 } from "@/lib/solar";
-import { geocodePlace } from "@/lib/geocode";
+import { geocodePlace, reverseGeocode } from "@/lib/geocode";
 import PhaseBackground from "@/components/PhaseBackground";
 import SearchBar from "@/components/SearchBar";
 import StatusPanel from "@/components/StatusPanel";
 import SolarArc from "@/components/SolarArc";
 import PhaseTimeline from "@/components/PhaseTimeline";
+import CalendarExport from "@/components/CalendarExport";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
 export default function Home() {
   const [data, setData] = useState<SunTimesResponse | null>(null);
   const [peakAltitude, setPeakAltitude] = useState<number | null>(null);
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [placeName, setPlaceName] = useState("");
   const [timeZone, setTimeZone] = useState<string | undefined>(undefined);
   const [now, setNow] = useState<Date>(() => new Date());
@@ -55,6 +57,7 @@ export default function Home() {
         }
         const payload: SunTimesResponse = await response.json();
         setData(payload);
+        setCoords({ lat, lng });
         setPlaceName(name);
         setTimeZone(tz);
 
@@ -111,14 +114,16 @@ export default function Home() {
     setLoading(true);
     setError(null);
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      async (position) => {
+        const { latitude, longitude } = position.coords;
         const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-        loadSunTimes(
-          position.coords.latitude,
-          position.coords.longitude,
-          "Your location",
-          tz,
-        );
+        let name = "Your location";
+        try {
+          name = await reverseGeocode(latitude, longitude);
+        } catch {
+          // keep the fallback name
+        }
+        loadSunTimes(latitude, longitude, name, tz);
       },
       () => {
         setError("Couldn't get your location.");
@@ -178,6 +183,9 @@ export default function Home() {
               />
             </div>
             <PhaseTimeline data={data} timeZone={timeZone} />
+            {coords && (
+              <CalendarExport lat={coords.lat} lng={coords.lng} timeZone={timeZone} />
+            )}
           </div>
         )}
 

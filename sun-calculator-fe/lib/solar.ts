@@ -56,6 +56,15 @@ export interface TimelineMarker {
   phase: "blue" | "golden" | "day";
 }
 
+// A timeline box: a single instant (sunrise/sunset/noon) or a range (blue/golden
+// hour, with `end` set).
+export interface TimelineEntry {
+  label: string;
+  phase: "blue" | "golden" | "day";
+  start: Date;
+  end?: Date;
+}
+
 export interface Moment {
   phaseKey: PhaseKey;
   headline: string;
@@ -136,19 +145,32 @@ export function buildSegments(data: SunTimesResponse): PhaseSegment[] {
   return segments;
 }
 
-export function buildTimeline(data: SunTimesResponse): TimelineMarker[] {
-  const markers: TimelineMarker[] = [];
-  const push = (label: string, iso: string | undefined, phase: TimelineMarker["phase"]) => {
-    if (iso) markers.push({ label, at: at(iso), phase });
+// buildTimeline returns the day's boxes in reading order — morning blue hour,
+// sunrise, morning golden hour, solar noon, evening golden hour, sunset, evening
+// blue hour — with the blue/golden hours carrying their full range. Golden hour
+// reads after sunrise in the morning and before sunset in the evening.
+export function buildTimeline(data: SunTimesResponse): TimelineEntry[] {
+  const entries: TimelineEntry[] = [];
+  const range = (label: string, win: TwilightWindow | undefined, phase: TimelineEntry["phase"]) => {
+    if (win) entries.push({ label, phase, start: at(win.start), end: at(win.end) });
   };
-  push("Blue hour starts", data.morning_blue_hour?.start, "blue");
-  push("Sunrise", data.sunrise, "golden");
-  push("Golden hour ends", data.morning_golden_hour?.end, "golden");
-  push("Solar noon", data.solar_noon, "day");
-  push("Golden hour starts", data.evening_golden_hour?.start, "golden");
-  push("Sunset", data.sunset, "golden");
-  push("Blue hour ends", data.evening_blue_hour?.end, "blue");
-  return markers;
+  const point = (label: string, iso: string | undefined, phase: TimelineEntry["phase"]) => {
+    if (iso) entries.push({ label, phase, start: at(iso) });
+  };
+  range("Blue hour", data.morning_blue_hour, "blue");
+  point("Sunrise", data.sunrise, "golden");
+  range("Golden hour", data.morning_golden_hour, "golden");
+  point("Solar noon", data.solar_noon, "day");
+  range("Golden hour", data.evening_golden_hour, "golden");
+  point("Sunset", data.sunset, "golden");
+  range("Blue hour", data.evening_blue_hour, "blue");
+  return entries;
+}
+
+// formatRange renders a start–end pair, or a single time when end is absent.
+export function formatRange(entry: TimelineEntry, timeZone?: string): string {
+  if (!entry.end) return formatClock(entry.start, timeZone);
+  return `${formatClock(entry.start, timeZone)} – ${formatClock(entry.end, timeZone)}`;
 }
 
 // Twilight boundaries (civil/nautical/astronomical dawn & dusk) for a secondary
