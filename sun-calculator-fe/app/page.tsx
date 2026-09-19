@@ -8,6 +8,7 @@ import SearchBar from "@/components/SearchBar";
 import StatusPanel from "@/components/StatusPanel";
 import SolarArc from "@/components/SolarArc";
 import PhaseTimeline from "@/components/PhaseTimeline";
+import CalendarExport from "@/components/CalendarExport";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
@@ -15,6 +16,9 @@ export default function Home() {
   const [data, setData] = useState<SunTimesResponse | null>(null);
   const [placeName, setPlaceName] = useState("");
   const [timeZone, setTimeZone] = useState<string | undefined>(undefined);
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
+    null,
+  );
   const [now, setNow] = useState<Date>(() => new Date());
   const [loading, setLoading] = useState(false);
   const [waking, setWaking] = useState(false);
@@ -52,6 +56,7 @@ export default function Home() {
         setData(payload);
         setPlaceName(name);
         setTimeZone(tz);
+        setCoords({ lat, lng });
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong.");
       } finally {
@@ -152,6 +157,9 @@ export default function Home() {
               <SolarArc data={data} now={now} timeZone={timeZone} />
             </div>
             <PhaseTimeline data={data} timeZone={timeZone} />
+            {coords && (
+              <CalendarExport coords={coords} timeZone={timeZone} />
+            )}
           </div>
         )}
 
