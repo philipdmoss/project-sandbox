@@ -174,6 +174,10 @@ func calendarHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusBadRequest)
 		return
 	}
+	if !phases.any() {
+		http.Error(w, `{"error": "No phases selected"}`, http.StatusBadRequest)
+		return
+	}
 
 	year := time.Now().UTC().Year()
 	if yearStr := r.URL.Query().Get("year"); yearStr != "" {
