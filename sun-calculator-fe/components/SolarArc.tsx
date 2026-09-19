@@ -7,8 +7,8 @@ interface Props {
 }
 
 const WIDTH = 800;
-const HEIGHT = 300;
-const HORIZON = 214;
+const HEIGHT = 340;
+const HORIZON = 245;
 const X0 = 60;
 const X1 = 740;
 const AMPLITUDE = 168;
@@ -38,10 +38,35 @@ export default function SolarArc({ data, now, timeZone }: Props) {
     .join(" ");
   const areaPath = `${arcPath} L ${X1} ${HORIZON} L ${X0} ${HORIZON} Z`;
 
-  const markers = [timeline[0], timeline[1], timeline[3], timeline[5], timeline[6]];
+  const shownMarkers = [timeline[0], timeline[1], timeline[3], timeline[5], timeline[6]];
   const nowFraction = fractionFor(now, dawn, dusk);
   const sunVisible = nowFraction >= 0 && nowFraction <= 1;
   const sun = pointFor(nowFraction);
+
+  // Lay out labels: endpoints drop below the horizon (empty space, clear of the
+  // clustered interior markers), while interior labels sit above the arc and
+  // stagger upward whenever they land too close in x to the previous one.
+  const MIN_X_GAP = 96;
+  const STAGGER = 30;
+  const lastIndex = shownMarkers.length - 1;
+  let prevX = -Infinity;
+  let level = 0;
+  const laidOut = shownMarkers.map((marker, i) => {
+    const point = pointFor(fractionFor(marker.at, dawn, dusk));
+    const isEndpoint = i === 0 || i === lastIndex;
+    let labelY: number;
+    let timeY: number;
+    if (isEndpoint) {
+      labelY = HORIZON + 30;
+      timeY = HORIZON + 46;
+    } else {
+      level = point.x - prevX < MIN_X_GAP ? level + 1 : 0;
+      prevX = point.x;
+      labelY = point.y - 28 - level * STAGGER;
+      timeY = point.y - 14 - level * STAGGER;
+    }
+    return { marker, point, labelY, timeY, isEndpoint };
+  });
 
   return (
     <svg
@@ -80,46 +105,70 @@ export default function SolarArc({ data, now, timeZone }: Props) {
         strokeDasharray="4 6"
       />
 
-      {markers.map((marker) => {
-        const point = pointFor(fractionFor(marker.at, dawn, dusk));
+      {sunVisible && (
+        <circle cx={sun.x} cy={sun.y} r="18" fill="url(#sunGlow)">
+          <animate
+            attributeName="r"
+            values="17;20;17"
+            dur="3s"
+            repeatCount="indefinite"
+          />
+        </circle>
+      )}
+
+      {laidOut.map(({ marker, point, labelY, timeY, isEndpoint }) => {
+        const leaderY = isEndpoint ? labelY - 12 : timeY + 4;
+        const hasLeader = isEndpoint || Math.abs(point.y - timeY) > 20;
         return (
           <g key={marker.label}>
+            {hasLeader && (
+              <line
+                x1={point.x}
+                y1={point.y}
+                x2={point.x}
+                y2={leaderY}
+                stroke="#ffffff"
+                strokeOpacity="0.3"
+                strokeWidth="1"
+              />
+            )}
             <circle cx={point.x} cy={point.y} r="4" fill="#ffffff" />
             <text
               x={point.x}
-              y={point.y - 14}
+              y={labelY}
               textAnchor="middle"
               fill="#ffffff"
-              fillOpacity="0.85"
-              fontSize="13"
-              fontWeight="500"
+              fillOpacity="0.95"
+              fontSize="14"
+              fontWeight="600"
+              fontFamily="var(--font-geist-sans), system-ui, sans-serif"
+              stroke="#0b1024"
+              strokeWidth="3"
+              strokeOpacity="0.55"
+              strokeLinejoin="round"
+              paintOrder="stroke"
             >
               {marker.label}
             </text>
             <text
               x={point.x}
-              y={point.y + 20}
+              y={timeY}
               textAnchor="middle"
               fill="#ffffff"
-              fillOpacity="0.6"
-              fontSize="12"
+              fillOpacity="0.7"
+              fontSize="13"
+              fontFamily="var(--font-geist-sans), system-ui, sans-serif"
+              stroke="#0b1024"
+              strokeWidth="3"
+              strokeOpacity="0.55"
+              strokeLinejoin="round"
+              paintOrder="stroke"
             >
               {formatClock(marker.at, timeZone)}
             </text>
           </g>
         );
       })}
-
-      {sunVisible && (
-        <circle cx={sun.x} cy={sun.y} r="12" fill="url(#sunGlow)">
-          <animate
-            attributeName="r"
-            values="11;13;11"
-            dur="3s"
-            repeatCount="indefinite"
-          />
-        </circle>
-      )}
     </svg>
   );
 }
