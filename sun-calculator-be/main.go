@@ -7,6 +7,8 @@ import (
 	"math/rand"
 	"net/http"
 	"net/url"
+	"os"
+	"strconv"
 	"time"
 )
 
@@ -151,9 +153,65 @@ func sunTimesHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func calendarHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	latStr := r.URL.Query().Get("lat")
+	lngStr := r.URL.Query().Get("lng")
+	if latStr == "" || lngStr == "" {
+		http.Error(w, `{"error": "Missing 'lat' or 'lng' parameters"}`, http.StatusBadRequest)
+		return
+	}
+	lat, latErr := strconv.ParseFloat(latStr, 64)
+	lng, lngErr := strconv.ParseFloat(lngStr, 64)
+	if latErr != nil || lngErr != nil || lat < -90 || lat > 90 || lng < -180 || lng > 180 {
+		http.Error(w, `{"error": "Invalid 'lat' or 'lng' parameters"}`, http.StatusBadRequest)
+		return
+	}
+
+	phases, err := parsePhases(r.URL.Query().Get("phases"))
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error": %q}`, err.Error()), http.StatusBadRequest)
+		return
+	}
+
+	year := time.Now().UTC().Year()
+	if yearStr := r.URL.Query().Get("year"); yearStr != "" {
+		parsed, err := strconv.Atoi(yearStr)
+		if err != nil || parsed < 1970 || parsed > 9999 {
+			http.Error(w, `{"error": "Invalid 'year' parameter"}`, http.StatusBadRequest)
+			return
+		}
+		year = parsed
+	}
+
+	var loc *time.Location
+	if tz := r.URL.Query().Get("tz"); tz != "" {
+		loc, err = time.LoadLocation(tz)
+		if err != nil {
+			http.Error(w, `{"error": "Invalid 'tz' parameter, expected an IANA name like America/New_York"}`, http.StatusBadRequest)
+			return
+		}
+	}
+
+	events := buildEvents(year, lat, lng, phases)
+	calName := fmt.Sprintf("Sun Times %d (%.4f, %.4f)", year, lat, lng)
+	ics := writeICS(calName, events, loc)
+
+	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="sun-times-%d.ics"`, year))
+	fmt.Fprint(w, ics)
+}
+
 func main() {
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/api/suntimes", sunTimesHandler)
-	log.Println("sun-calculator-be listening on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	http.HandleFunc("/api/calendar", calendarHandler)
+
+	addr := ":8080"
+	if port := os.Getenv("PORT"); port != "" {
+		addr = ":" + port
+	}
+	log.Printf("sun-calculator-be listening on %s", addr)
+	log.Fatal(http.ListenAndServe(addr, nil))
 }
