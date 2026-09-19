@@ -17,11 +17,12 @@ interface Props {
 }
 
 const WIDTH = 800;
-const HEIGHT = 396;
+const HEIGHT = 420;
 const X0 = 70;
 const X1 = 730;
 const TOP = 40;
-const BOTTOM = 300;
+const BOTTOM = 288;
+const LINE_H = 15;
 
 // Shared text styling matching the existing arc labels (white fill, dark
 // outline via paint-order stroke).
@@ -32,6 +33,23 @@ const outline = {
   strokeLinejoin: "round" as const,
   paintOrder: "stroke" as const,
 };
+
+const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+
+// Rough half-width of a two-line label in SVG units, for collision spacing.
+function labelHalfWidth(name: string, time: string): number {
+  return Math.max(name.length * 7.2, time.length * 6.6) / 2;
+}
+
+interface PlacedLabel {
+  name: string;
+  time: string;
+  dotX: number;
+  dotY: number;
+  cx: number;
+  topY: number;
+  half: number;
+}
 
 export default function SolarArc({ data, now, timeZone, peakAltitude }: Props) {
   const [smooth, setSmooth] = useState(true);
@@ -56,8 +74,6 @@ export default function SolarArc({ data, now, timeZone, peakAltitude }: Props) {
   const yFor = (e: number) => BOTTOM - ((e - eMin) / (eMax - eMin)) * (BOTTOM - TOP);
   const horizonY = yFor(0);
 
-  // Smooth mode: a clean symmetric bell peaking at solar noon. Actual mode: the
-  // true elevation at each instant.
   const smoothElevation = (t: number) => {
     const f = Math.min(1, Math.max(0, (t - first) / span));
     return eMin + (eMax - eMin) * Math.sin(f * Math.PI);
@@ -79,9 +95,6 @@ export default function SolarArc({ data, now, timeZone, peakAltitude }: Props) {
   const rangeText = (win: TwilightWindow) =>
     `${formatClock(new Date(win.start), timeZone)} – ${formatClock(new Date(win.end), timeZone)}`;
 
-  // Golden/blue-hour highlights and their side-placed labels. The label sits on
-  // the outer side of each highlight: morning blue on the left / golden on the
-  // right, and the reverse in the evening.
   const bandDefs = [
     { win: data.morning_blue_hour, color: "#5b6cd6", name: "Blue Hour", labelSide: "left" as const },
     { win: data.morning_golden_hour, color: "#e2a036", name: "Golden Hour", labelSide: "right" as const },
@@ -102,33 +115,57 @@ export default function SolarArc({ data, now, timeZone, peakAltitude }: Props) {
   const sunY = yFor(elevationForMode(nowMs));
   const sunAltitude = Math.round(elevationAt(anchors, now));
 
-  const keyMarkers = [
-    { label: "Sunrise", iso: data.sunrise },
-    { label: "Solar noon", iso: data.solar_noon },
-    { label: "Sunset", iso: data.sunset },
-  ].filter((m): m is { label: string; iso: string } => Boolean(m.iso));
+  // Solar noon: its label sits above the dot (nothing else is up there).
+  const noon = data.solar_noon
+    ? (() => {
+        const t = new Date(data.solar_noon).getTime();
+        return { x: xFor(t), y: yFor(elevationForMode(t)) };
+      })()
+    : null;
 
-  // Twilight labels, styled like the key markers (name + time, two lines).
-  // Dawns stack in the bottom-left, dusks in the bottom-right.
-  const twilightLeft = [
-    data.astronomical_twilight?.dawn && { label: "Astronomical dawn", iso: data.astronomical_twilight.dawn },
-    data.nautical_twilight?.dawn && { label: "Nautical dawn", iso: data.nautical_twilight.dawn },
-  ].filter(Boolean) as { label: string; iso: string }[];
-  const twilightRight = [
-    data.nautical_twilight?.dusk && { label: "Nautical dusk", iso: data.nautical_twilight.dusk },
-    data.astronomical_twilight?.dusk && { label: "Astronomical dusk", iso: data.astronomical_twilight.dusk },
-  ].filter(Boolean) as { label: string; iso: string }[];
+  // Sunrise/sunset and the twilight points: dots on the arc with labels placed
+  // just below, then pushed downward when they would collide with a label
+  // already placed (keeping each near its own dot, connected by a leader line).
+  const belowInput = [
+    data.sunrise && { name: "Sunrise", iso: data.sunrise },
+    data.sunset && { name: "Sunset", iso: data.sunset },
+    data.astronomical_twilight?.dawn && { name: "Astronomical dawn", iso: data.astronomical_twilight.dawn },
+    data.nautical_twilight?.dawn && { name: "Nautical dawn", iso: data.nautical_twilight.dawn },
+    data.nautical_twilight?.dusk && { name: "Nautical dusk", iso: data.nautical_twilight.dusk },
+    data.astronomical_twilight?.dusk && { name: "Astronomical dusk", iso: data.astronomical_twilight.dusk },
+  ].filter(Boolean) as { name: string; iso: string }[];
 
-  const twilightLabel = (c: { label: string; iso: string }, x: number, y: number, anchor: "start" | "end", key: string) => (
-    <g key={key}>
-      <text x={x} y={y} textAnchor={anchor} fill="#ffffff" fillOpacity="0.95" fontSize="14" fontWeight="600" {...outline}>
-        {c.label}
-      </text>
-      <text x={x} y={y + 16} textAnchor={anchor} fill="#ffffff" fillOpacity="0.7" fontSize="13" {...outline}>
-        {formatClock(new Date(c.iso), timeZone)}
-      </text>
-    </g>
-  );
+  const placed: PlacedLabel[] = [];
+  belowInput
+    .map((m) => {
+      const t = new Date(m.iso).getTime();
+      const time = formatClock(new Date(m.iso), timeZone);
+      return {
+        name: m.name,
+        time,
+        dotX: xFor(t),
+        dotY: yFor(elevationForMode(t)),
+        half: labelHalfWidth(m.name, time),
+      };
+    })
+    // Higher dots first so lower ones cascade further down.
+    .sort((a, b) => a.dotY - b.dotY)
+    .forEach((m) => {
+      const cx = clamp(m.dotX, m.half + 4, WIDTH - m.half - 4);
+      let topY = Math.max(m.dotY + 12, horizonY + 14);
+      const boxH = 2 * LINE_H + 8;
+      for (let guard = 0; guard < 20; guard += 1) {
+        const hit = placed.find(
+          (p) =>
+            Math.abs(p.cx - cx) < p.half + m.half + 8 &&
+            topY < p.topY + boxH &&
+            topY + boxH > p.topY,
+        );
+        if (!hit) break;
+        topY = hit.topY + boxH;
+      }
+      placed.push({ name: m.name, time: m.time, dotX: m.dotX, dotY: m.dotY, cx, topY, half: m.half });
+    });
 
   return (
     <div>
@@ -181,7 +218,6 @@ export default function SolarArc({ data, now, timeZone, peakAltitude }: Props) {
         </text>
         <path d={arcPath} fill="none" stroke="#ffffff" strokeOpacity="0.75" strokeWidth="2" strokeDasharray="4 6" />
 
-        {/* Golden/blue-hour labels, beside their highlights */}
         {bandDefs.map((b, i) => {
           const anchor = b.labelSide === "left" ? "end" : "start";
           return (
@@ -207,36 +243,32 @@ export default function SolarArc({ data, now, timeZone, peakAltitude }: Props) {
           </g>
         )}
 
-        {keyMarkers.map((m) => {
-          const t = new Date(m.iso).getTime();
-          const x = xFor(t);
-          const y = yFor(elevationForMode(t));
-          const below = elevationAt(anchors, new Date(m.iso)) < 3;
-          const labelY = below ? horizonY + 26 : y - 26;
-          const timeY = below ? horizonY + 42 : y - 12;
-          return (
-            <g key={m.label}>
-              <circle cx={x} cy={y} r="4" fill="#ffffff" />
-              <text x={x} y={labelY} textAnchor="middle" fill="#ffffff" fillOpacity="0.95" fontSize="14" fontWeight="600" {...outline}>
-                {m.label}
-              </text>
-              <text x={x} y={timeY} textAnchor="middle" fill="#ffffff" fillOpacity="0.7" fontSize="13" {...outline}>
-                {formatClock(new Date(m.iso), timeZone)}
-              </text>
-            </g>
-          );
-        })}
+        {noon && (
+          <g>
+            <circle cx={noon.x} cy={noon.y} r="4" fill="#ffffff" />
+            <text x={noon.x} y={noon.y - 26} textAnchor="middle" fill="#ffffff" fillOpacity="0.95" fontSize="14" fontWeight="600" {...outline}>
+              Solar noon
+            </text>
+            <text x={noon.x} y={noon.y - 12} textAnchor="middle" fill="#ffffff" fillOpacity="0.7" fontSize="13" {...outline}>
+              {formatClock(new Date(data.solar_noon), timeZone)}
+            </text>
+          </g>
+        )}
 
-        {/* Dots on the arc for each twilight point */}
-        {[...twilightLeft, ...twilightRight].map((c, i) => {
-          const t = new Date(c.iso).getTime();
-          return (
-            <circle key={`td${i}`} cx={xFor(t)} cy={yFor(elevationForMode(t))} r="3.5" fill="#ffffff" fillOpacity="0.85" />
-          );
-        })}
-
-        {twilightLeft.map((c, i) => twilightLabel(c, X0 - 10, BOTTOM + 30 + i * 38, "start", `tl${i}`))}
-        {twilightRight.map((c, i) => twilightLabel(c, X1 + 10, BOTTOM + 30 + i * 38, "end", `tr${i}`))}
+        {placed.map((m, i) => (
+          <g key={`m${i}`}>
+            {m.topY - 4 > m.dotY + 8 && (
+              <line x1={m.dotX} y1={m.dotY} x2={m.cx} y2={m.topY - 4} stroke="#ffffff" strokeOpacity="0.3" strokeWidth="1" />
+            )}
+            <circle cx={m.dotX} cy={m.dotY} r="4" fill="#ffffff" />
+            <text x={m.cx} y={m.topY + 11} textAnchor="middle" fill="#ffffff" fillOpacity="0.95" fontSize="14" fontWeight="600" {...outline}>
+              {m.name}
+            </text>
+            <text x={m.cx} y={m.topY + 27} textAnchor="middle" fill="#ffffff" fillOpacity="0.7" fontSize="13" {...outline}>
+              {m.time}
+            </text>
+          </g>
+        ))}
       </svg>
 
       <div className="mt-2 flex items-center justify-center gap-4 text-xs text-white/70">
