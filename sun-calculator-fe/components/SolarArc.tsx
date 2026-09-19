@@ -17,7 +17,7 @@ interface Props {
 }
 
 const WIDTH = 800;
-const HEIGHT = 360;
+const HEIGHT = 396;
 const X0 = 70;
 const X1 = 730;
 const TOP = 40;
@@ -34,7 +34,7 @@ const outline = {
 };
 
 export default function SolarArc({ data, now, timeZone, peakAltitude }: Props) {
-  const [smooth, setSmooth] = useState(false);
+  const [smooth, setSmooth] = useState(true);
 
   const anchors = buildElevationAnchors(data, peakAltitude);
   if (anchors.length < 2) {
@@ -78,25 +78,23 @@ export default function SolarArc({ data, now, timeZone, peakAltitude }: Props) {
 
   const rangeText = (win: TwilightWindow) =>
     `${formatClock(new Date(win.start), timeZone)} – ${formatClock(new Date(win.end), timeZone)}`;
-  const band = (win: TwilightWindow | undefined) =>
-    win ? { x: xFor(new Date(win.start).getTime()), w: xFor(new Date(win.end).getTime()) - xFor(new Date(win.start).getTime()) } : null;
 
-  const goldBands = [data.morning_golden_hour, data.evening_golden_hour]
-    .map(band)
-    .filter((b): b is { x: number; w: number } => b !== null);
-  const blueBands = [data.morning_blue_hour, data.evening_blue_hour]
-    .map(band)
-    .filter((b): b is { x: number; w: number } => b !== null);
-
-  // Band legend labels: morning stacked top-left, evening stacked top-right.
-  const morningLabels = [
-    data.morning_blue_hour && { name: "Blue Hour", range: rangeText(data.morning_blue_hour) },
-    data.morning_golden_hour && { name: "Golden Hour", range: rangeText(data.morning_golden_hour) },
-  ].filter(Boolean) as { name: string; range: string }[];
-  const eveningLabels = [
-    data.evening_golden_hour && { name: "Golden Hour", range: rangeText(data.evening_golden_hour) },
-    data.evening_blue_hour && { name: "Blue Hour", range: rangeText(data.evening_blue_hour) },
-  ].filter(Boolean) as { name: string; range: string }[];
+  // Golden/blue-hour highlights and their side-placed labels. The label sits on
+  // the outer side of each highlight: morning blue on the left / golden on the
+  // right, and the reverse in the evening.
+  const bandDefs = [
+    { win: data.morning_blue_hour, color: "#5b6cd6", name: "Blue Hour", labelSide: "left" as const },
+    { win: data.morning_golden_hour, color: "#e2a036", name: "Golden Hour", labelSide: "right" as const },
+    { win: data.evening_golden_hour, color: "#e2a036", name: "Golden Hour", labelSide: "left" as const },
+    { win: data.evening_blue_hour, color: "#5b6cd6", name: "Blue Hour", labelSide: "right" as const },
+  ]
+    .filter((d): d is { win: TwilightWindow; color: string; name: string; labelSide: "left" | "right" } => Boolean(d.win))
+    .map((d) => {
+      const x = xFor(new Date(d.win.start).getTime());
+      const w = xFor(new Date(d.win.end).getTime()) - x;
+      const labelX = d.labelSide === "left" ? x - 8 : x + w + 8;
+      return { ...d, x, w, labelX, range: rangeText(d.win) };
+    });
 
   const nowMs = now.getTime();
   const sunVisible = nowMs >= first && nowMs <= last;
@@ -110,35 +108,46 @@ export default function SolarArc({ data, now, timeZone, peakAltitude }: Props) {
     { label: "Sunset", iso: data.sunset },
   ].filter((m): m is { label: string; iso: string } => Boolean(m.iso));
 
-  const twilightCaptions = {
-    left: [
-      data.astronomical_twilight?.dawn && { label: "Astronomical dawn", iso: data.astronomical_twilight.dawn },
-      data.nautical_twilight?.dawn && { label: "Nautical dawn", iso: data.nautical_twilight.dawn },
-    ].filter(Boolean) as { label: string; iso: string }[],
-    right: [
-      data.nautical_twilight?.dusk && { label: "Nautical dusk", iso: data.nautical_twilight.dusk },
-      data.astronomical_twilight?.dusk && { label: "Astronomical dusk", iso: data.astronomical_twilight.dusk },
-    ].filter(Boolean) as { label: string; iso: string }[],
-  };
+  // Twilight labels, styled like the key markers (name + time, two lines).
+  // Dawns stack in the bottom-left, dusks in the bottom-right.
+  const twilightLeft = [
+    data.astronomical_twilight?.dawn && { label: "Astronomical dawn", iso: data.astronomical_twilight.dawn },
+    data.nautical_twilight?.dawn && { label: "Nautical dawn", iso: data.nautical_twilight.dawn },
+  ].filter(Boolean) as { label: string; iso: string }[];
+  const twilightRight = [
+    data.nautical_twilight?.dusk && { label: "Nautical dusk", iso: data.nautical_twilight.dusk },
+    data.astronomical_twilight?.dusk && { label: "Astronomical dusk", iso: data.astronomical_twilight.dusk },
+  ].filter(Boolean) as { label: string; iso: string }[];
+
+  const twilightLabel = (c: { label: string; iso: string }, x: number, y: number, anchor: "start" | "end", key: string) => (
+    <g key={key}>
+      <text x={x} y={y} textAnchor={anchor} fill="#ffffff" fillOpacity="0.95" fontSize="14" fontWeight="600" {...outline}>
+        {c.label}
+      </text>
+      <text x={x} y={y + 16} textAnchor={anchor} fill="#ffffff" fillOpacity="0.7" fontSize="13" {...outline}>
+        {formatClock(new Date(c.iso), timeZone)}
+      </text>
+    </g>
+  );
 
   return (
     <div>
       <div className="mb-2 flex items-center justify-end gap-1 text-xs">
         <span className="mr-1 text-white/50">Arc</span>
-        {(["actual", "smooth"] as const).map((mode) => {
+        {(["smooth", "actual"] as const).map((mode) => {
           const active = (mode === "smooth") === smooth;
           return (
             <button
               key={mode}
               type="button"
               onClick={() => setSmooth(mode === "smooth")}
-              className={`rounded-md px-2.5 py-1 capitalize ring-1 transition ${
+              className={`rounded-md px-2.5 py-1 transition ${
                 active
-                  ? "bg-white/90 text-slate-900 ring-white"
-                  : "bg-white/10 text-white/80 ring-white/20 hover:bg-white/20"
+                  ? "bg-white/90 text-slate-900 ring-1 ring-white"
+                  : "bg-white/10 text-white/80 ring-1 ring-white/20 hover:bg-white/20"
               }`}
             >
-              {mode === "actual" ? "Actual height" : "Smooth"}
+              {mode === "smooth" ? "Smooth" : "Actual height"}
             </button>
           );
         })}
@@ -161,11 +170,8 @@ export default function SolarArc({ data, now, timeZone, peakAltitude }: Props) {
           </radialGradient>
         </defs>
 
-        {goldBands.map((b, i) => (
-          <rect key={`g${i}`} x={b.x} y={TOP} width={b.w} height={BOTTOM - TOP} fill="#e2a036" fillOpacity="0.22" />
-        ))}
-        {blueBands.map((b, i) => (
-          <rect key={`b${i}`} x={b.x} y={TOP} width={b.w} height={BOTTOM - TOP} fill="#5b6cd6" fillOpacity="0.24" />
+        {bandDefs.map((b, i) => (
+          <rect key={`band${i}`} x={b.x} y={TOP} width={b.w} height={BOTTOM - TOP} fill={b.color} fillOpacity="0.22" />
         ))}
 
         <path d={areaPath} fill="url(#arcFill)" />
@@ -175,27 +181,20 @@ export default function SolarArc({ data, now, timeZone, peakAltitude }: Props) {
         </text>
         <path d={arcPath} fill="none" stroke="#ffffff" strokeOpacity="0.75" strokeWidth="2" strokeDasharray="4 6" />
 
-        {/* Band legend labels — morning left, evening right */}
-        {morningLabels.map((l, i) => (
-          <g key={`ml${i}`}>
-            <text x={X0} y={TOP + 4 + i * 40} textAnchor="start" fill="#ffffff" fillOpacity="0.95" fontSize="14" fontWeight="600" {...outline}>
-              {l.name}
-            </text>
-            <text x={X0} y={TOP + 20 + i * 40} textAnchor="start" fill="#ffffff" fillOpacity="0.7" fontSize="12" {...outline}>
-              {l.range}
-            </text>
-          </g>
-        ))}
-        {eveningLabels.map((l, i) => (
-          <g key={`el${i}`}>
-            <text x={X1} y={TOP + 4 + i * 40} textAnchor="end" fill="#ffffff" fillOpacity="0.95" fontSize="14" fontWeight="600" {...outline}>
-              {l.name}
-            </text>
-            <text x={X1} y={TOP + 20 + i * 40} textAnchor="end" fill="#ffffff" fillOpacity="0.7" fontSize="12" {...outline}>
-              {l.range}
-            </text>
-          </g>
-        ))}
+        {/* Golden/blue-hour labels, beside their highlights */}
+        {bandDefs.map((b, i) => {
+          const anchor = b.labelSide === "left" ? "end" : "start";
+          return (
+            <g key={`bl${i}`}>
+              <text x={b.labelX} y={96} textAnchor={anchor} fill="#ffffff" fillOpacity="0.95" fontSize="14" fontWeight="600" {...outline}>
+                {b.name}
+              </text>
+              <text x={b.labelX} y={112} textAnchor={anchor} fill="#ffffff" fillOpacity="0.7" fontSize="12" {...outline}>
+                {b.range}
+              </text>
+            </g>
+          );
+        })}
 
         {sunVisible && (
           <g>
@@ -228,17 +227,16 @@ export default function SolarArc({ data, now, timeZone, peakAltitude }: Props) {
           );
         })}
 
-        {/* Twilight labels — dawns bottom-left, dusks bottom-right */}
-        {twilightCaptions.left.map((c, i) => (
-          <text key={`tl${i}`} x={X0 - 20} y={BOTTOM + 22 + i * 16} textAnchor="start" fill="#ffffff" fillOpacity="0.65" fontSize="11" {...outline}>
-            {c.label} {formatClock(new Date(c.iso), timeZone)}
-          </text>
-        ))}
-        {twilightCaptions.right.map((c, i) => (
-          <text key={`tr${i}`} x={X1 + 20} y={BOTTOM + 22 + i * 16} textAnchor="end" fill="#ffffff" fillOpacity="0.65" fontSize="11" {...outline}>
-            {c.label} {formatClock(new Date(c.iso), timeZone)}
-          </text>
-        ))}
+        {/* Dots on the arc for each twilight point */}
+        {[...twilightLeft, ...twilightRight].map((c, i) => {
+          const t = new Date(c.iso).getTime();
+          return (
+            <circle key={`td${i}`} cx={xFor(t)} cy={yFor(elevationForMode(t))} r="3.5" fill="#ffffff" fillOpacity="0.85" />
+          );
+        })}
+
+        {twilightLeft.map((c, i) => twilightLabel(c, X0 - 10, BOTTOM + 30 + i * 38, "start", `tl${i}`))}
+        {twilightRight.map((c, i) => twilightLabel(c, X1 + 10, BOTTOM + 30 + i * 38, "end", `tr${i}`))}
       </svg>
 
       <div className="mt-2 flex items-center justify-center gap-4 text-xs text-white/70">

@@ -47,7 +47,7 @@ export default function PhaseTimeline({ data, timeZone }: Props) {
                   {entry.label}
                 </span>
               </div>
-              <div className="mt-auto whitespace-nowrap font-mono text-xs text-white sm:text-sm">
+              <div className="mt-auto break-words font-mono text-xs text-white">
                 {formatRange(entry, timeZone)}
               </div>
             </div>

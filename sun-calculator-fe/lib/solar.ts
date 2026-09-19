@@ -168,9 +168,16 @@ export function buildTimeline(data: SunTimesResponse): TimelineEntry[] {
 }
 
 // formatRange renders a start–end pair, or a single time when end is absent.
+// The shared AM/PM is shown once ("6:15 – 6:24 AM") to keep it compact.
 export function formatRange(entry: TimelineEntry, timeZone?: string): string {
-  if (!entry.end) return formatClock(entry.start, timeZone);
-  return `${formatClock(entry.start, timeZone)} – ${formatClock(entry.end, timeZone)}`;
+  const start = formatClock(entry.start, timeZone);
+  if (!entry.end) return start;
+  const end = formatClock(entry.end, timeZone);
+  const startMeridiem = start.slice(-2);
+  if (startMeridiem === end.slice(-2) && (startMeridiem === "AM" || startMeridiem === "PM")) {
+    return `${start.slice(0, -3)} – ${end}`;
+  }
+  return `${start} – ${end}`;
 }
 
 // Twilight boundaries (civil/nautical/astronomical dawn & dusk) for a secondary
