@@ -46,7 +46,9 @@ interface PlacedLabel {
   time: string;
   dotX: number;
   dotY: number;
-  cx: number;
+  textX: number;
+  anchor: "start" | "middle" | "end";
+  center: number;
   topY: number;
   half: number;
 }
@@ -126,45 +128,71 @@ export default function SolarArc({ data, now, timeZone, peakAltitude }: Props) {
   // Sunrise/sunset and the twilight points: dots on the arc with labels placed
   // just below, then pushed downward when they would collide with a label
   // already placed (keeping each near its own dot, connected by a leader line).
-  const belowInput = [
+  const placed: PlacedLabel[] = [];
+  const boxH = 2 * LINE_H + 8;
+
+  // Nautical dawn/dusk are pinned to the outer corners to unclutter the cluster.
+  const pin = (iso: string, name: string, side: "left" | "right") => {
+    const t = new Date(iso).getTime();
+    const time = formatClock(new Date(iso), timeZone);
+    const half = labelHalfWidth(name, time);
+    const textX = side === "left" ? 6 : WIDTH - 6;
+    placed.push({
+      name,
+      time,
+      dotX: xFor(t),
+      dotY: yFor(elevationForMode(t)),
+      textX,
+      anchor: side === "left" ? "start" : "end",
+      center: side === "left" ? textX + half : textX - half,
+      topY: horizonY + 44,
+      half,
+    });
+  };
+  if (data.nautical_twilight?.dawn) pin(data.nautical_twilight.dawn, "Nautical dawn", "left");
+  if (data.nautical_twilight?.dusk) pin(data.nautical_twilight.dusk, "Nautical dusk", "right");
+
+  // Sunrise, sunset and astronomical dawn/dusk: labels below their dots, pushed
+  // down to avoid overlapping anything already placed (including the pins).
+  const cascadeInput = [
     data.sunrise && { name: "Sunrise", iso: data.sunrise },
     data.sunset && { name: "Sunset", iso: data.sunset },
     data.astronomical_twilight?.dawn && { name: "Astronomical dawn", iso: data.astronomical_twilight.dawn },
-    data.nautical_twilight?.dawn && { name: "Nautical dawn", iso: data.nautical_twilight.dawn },
-    data.nautical_twilight?.dusk && { name: "Nautical dusk", iso: data.nautical_twilight.dusk },
     data.astronomical_twilight?.dusk && { name: "Astronomical dusk", iso: data.astronomical_twilight.dusk },
   ].filter(Boolean) as { name: string; iso: string }[];
 
-  const placed: PlacedLabel[] = [];
-  belowInput
+  cascadeInput
     .map((m) => {
       const t = new Date(m.iso).getTime();
       const time = formatClock(new Date(m.iso), timeZone);
-      return {
-        name: m.name,
-        time,
-        dotX: xFor(t),
-        dotY: yFor(elevationForMode(t)),
-        half: labelHalfWidth(m.name, time),
-      };
+      return { name: m.name, time, dotX: xFor(t), dotY: yFor(elevationForMode(t)), half: labelHalfWidth(m.name, time) };
     })
     // Higher dots first so lower ones cascade further down.
     .sort((a, b) => a.dotY - b.dotY)
     .forEach((m) => {
-      const cx = clamp(m.dotX, m.half + 4, WIDTH - m.half - 4);
+      const center = clamp(m.dotX, m.half + 4, WIDTH - m.half - 4);
       let topY = Math.max(m.dotY + 12, horizonY + 14);
-      const boxH = 2 * LINE_H + 8;
-      for (let guard = 0; guard < 20; guard += 1) {
+      for (let guard = 0; guard < 30; guard += 1) {
         const hit = placed.find(
           (p) =>
-            Math.abs(p.cx - cx) < p.half + m.half + 8 &&
+            Math.abs(p.center - center) < p.half + m.half + 8 &&
             topY < p.topY + boxH &&
             topY + boxH > p.topY,
         );
         if (!hit) break;
         topY = hit.topY + boxH;
       }
-      placed.push({ name: m.name, time: m.time, dotX: m.dotX, dotY: m.dotY, cx, topY, half: m.half });
+      placed.push({
+        name: m.name,
+        time: m.time,
+        dotX: m.dotX,
+        dotY: m.dotY,
+        textX: center,
+        anchor: "middle",
+        center,
+        topY,
+        half: m.half,
+      });
     });
 
   return (
@@ -258,13 +286,13 @@ export default function SolarArc({ data, now, timeZone, peakAltitude }: Props) {
         {placed.map((m, i) => (
           <g key={`m${i}`}>
             {m.topY - 4 > m.dotY + 8 && (
-              <line x1={m.dotX} y1={m.dotY} x2={m.cx} y2={m.topY - 4} stroke="#ffffff" strokeOpacity="0.3" strokeWidth="1" />
+              <line x1={m.dotX} y1={m.dotY} x2={m.center} y2={m.topY - 4} stroke="#ffffff" strokeOpacity="0.3" strokeWidth="1" />
             )}
             <circle cx={m.dotX} cy={m.dotY} r="4" fill="#ffffff" />
-            <text x={m.cx} y={m.topY + 11} textAnchor="middle" fill="#ffffff" fillOpacity="0.95" fontSize="14" fontWeight="600" {...outline}>
+            <text x={m.textX} y={m.topY + 11} textAnchor={m.anchor} fill="#ffffff" fillOpacity="0.95" fontSize="14" fontWeight="600" {...outline}>
               {m.name}
             </text>
-            <text x={m.cx} y={m.topY + 27} textAnchor="middle" fill="#ffffff" fillOpacity="0.7" fontSize="13" {...outline}>
+            <text x={m.textX} y={m.topY + 27} textAnchor={m.anchor} fill="#ffffff" fillOpacity="0.7" fontSize="13" {...outline}>
               {m.time}
             </text>
           </g>
