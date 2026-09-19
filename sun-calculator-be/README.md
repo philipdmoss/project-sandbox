@@ -14,6 +14,38 @@ Liveness check.
 Sun times for **today** at a location, as JSON. Proxies
 `api.sunrise-sunset.org` and derives the twilight windows.
 
+### `GET /api/solar?lat=&lng=&date=&field=`
+Individual sun values (or all of them) for a location on a date, as JSON,
+computed locally. Backs the same solar helpers the calendar uses.
+
+| param   | required | default        | notes |
+|---------|----------|----------------|-------|
+| `lat`   | yes      | —              | −90..90 |
+| `lng`   | yes      | —              | −180..180 |
+| `date`  | no       | today (UTC)    | `YYYY-MM-DD`, the local day at the location |
+| `field` | no       | all            | comma-separated subset (or `all`) |
+
+`field` values: `sunrise`, `sunset`, `solar_noon`, `day_length`,
+`morning_blue_hour`, `morning_golden_hour`, `evening_golden_hour`,
+`evening_blue_hour`. Times are UTC RFC 3339; twilight windows are
+`{start, end, duration}`; `day_length` is a duration string. Returns only the
+requested keys.
+
+```
+# one value
+/api/solar?lat=42.3601&lng=-71.0589&field=sunrise
+-> {"sunrise":"2026-06-21T09:07:30Z"}
+
+# a combination
+/api/solar?lat=48.8566&lng=2.3522&date=2026-06-21&field=day_length,morning_golden_hour
+
+# everything (field omitted)
+/api/solar?lat=-33.8688&lng=151.2093
+```
+
+A 422 is returned for locations/dates where the sun does not rise and set
+(polar day or night).
+
 ### `GET /api/calendar?lat=&lng=&phases=&year=&tz=`
 Generates a **full year** of events as a downloadable iCalendar (`.ics`) file
 that can be imported into Google Calendar (Settings → Import & export), Apple
