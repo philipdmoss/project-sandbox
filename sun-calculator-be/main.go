@@ -137,42 +137,49 @@ func ptrWindow(r timeRange) *twilightWindow {
 	return &w
 }
 
-func calendarHandler(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	lat, lng, err := parseCoords(r)
+// parseCalendarParams reads the lat/lng, phases, and optional tz shared by the
+// calendar endpoints. The returned error message is safe to send to the client.
+func parseCalendarParams(r *http.Request) (lat, lng float64, phases phaseSet, loc *time.Location, err error) {
+	lat, lng, err = parseCoords(r)
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-
-	phases, err := parsePhases(r.URL.Query().Get("phases"))
+	phases, err = parsePhases(r.URL.Query().Get("phases"))
 	if err != nil {
-		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	if !phases.any() {
-		writeJSONError(w, http.StatusBadRequest, "No phases selected")
+		err = errors.New("No phases selected")
+		return
+	}
+	if tz := r.URL.Query().Get("tz"); tz != "" {
+		loc, err = time.LoadLocation(tz)
+		if err != nil {
+			err = errors.New("Invalid 'tz' parameter, expected an IANA name like America/New_York")
+			return
+		}
+	}
+	return
+}
+
+// calendarHandler serves one year (default current) as a downloadable .ics file.
+func calendarHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	lat, lng, phases, loc, err := parseCalendarParams(r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	year := time.Now().UTC().Year()
 	if yearStr := r.URL.Query().Get("year"); yearStr != "" {
-		parsed, err := strconv.Atoi(yearStr)
-		if err != nil || parsed < 1970 || parsed > 9999 {
+		parsed, perr := strconv.Atoi(yearStr)
+		if perr != nil || parsed < 1970 || parsed > 9999 {
 			writeJSONError(w, http.StatusBadRequest, "Invalid 'year' parameter")
 			return
 		}
 		year = parsed
-	}
-
-	var loc *time.Location
-	if tz := r.URL.Query().Get("tz"); tz != "" {
-		loc, err = time.LoadLocation(tz)
-		if err != nil {
-			writeJSONError(w, http.StatusBadRequest, "Invalid 'tz' parameter, expected an IANA name like America/New_York")
-			return
-		}
 	}
 
 	events := buildEvents(year, lat, lng, phases, loc)
@@ -184,21 +191,59 @@ func calendarHandler(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprint(w, ics)
 }
 
+// calendarFeedHandler serves a rolling window (current year plus next year) as a
+// subscribable calendar — no attachment header, recomputed each request — so a
+// calendar app pointed at this URL (e.g. via webcal://) always stays current.
+func calendarFeedHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	lat, lng, phases, loc, err := parseCalendarParams(r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	thisYear := time.Now().UTC().Year()
+	var events []calendarEvent
+	for year := thisYear; year <= thisYear+1; year++ {
+		events = append(events, buildEvents(year, lat, lng, phases, loc)...)
+	}
+	calName := fmt.Sprintf("Sun Times (%.4f, %.4f)", lat, lng)
+	ics := writeICS(calName, events, loc)
+
+	w.Header().Set("Content-Type", "text/calendar; charset=utf-8")
+	fmt.Fprint(w, ics)
+}
+
 // fieldSet records which solar values the caller asked /api/solar to return.
 type fieldSet struct {
-	sunrise       bool
-	sunset        bool
-	solarNoon     bool
-	dayLength     bool
-	morningBlue   bool
-	morningGolden bool
-	eveningGolden bool
-	eveningBlue   bool
+	sunrise        bool
+	sunset         bool
+	sunriseAzimuth bool
+	sunsetAzimuth  bool
+	solarNoon      bool
+	dayLength      bool
+	morningBlue    bool
+	morningGolden  bool
+	eveningGolden  bool
+	eveningBlue    bool
+	civil          bool
+	nautical       bool
+	astronomical   bool
 }
 
 func (f fieldSet) any() bool {
-	return f.sunrise || f.sunset || f.solarNoon || f.dayLength ||
-		f.morningBlue || f.morningGolden || f.eveningGolden || f.eveningBlue
+	return f.sunrise || f.sunset || f.sunriseAzimuth || f.sunsetAzimuth ||
+		f.solarNoon || f.dayLength || f.morningBlue || f.morningGolden ||
+		f.eveningGolden || f.eveningBlue || f.civil || f.nautical || f.astronomical
+}
+
+func allFields() fieldSet {
+	return fieldSet{
+		sunrise: true, sunset: true, sunriseAzimuth: true, sunsetAzimuth: true,
+		solarNoon: true, dayLength: true, morningBlue: true, morningGolden: true,
+		eveningGolden: true, eveningBlue: true, civil: true, nautical: true, astronomical: true,
+	}
 }
 
 // parseSolarFields turns the `field` query value into a fieldSet. An empty value
@@ -207,7 +252,7 @@ func (f fieldSet) any() bool {
 func parseSolarFields(raw string) (fieldSet, error) {
 	raw = strings.TrimSpace(strings.ToLower(raw))
 	if raw == "" || raw == "all" {
-		return fieldSet{true, true, true, true, true, true, true, true}, nil
+		return allFields(), nil
 	}
 
 	var f fieldSet
@@ -217,6 +262,10 @@ func parseSolarFields(raw string) (fieldSet, error) {
 			f.sunrise = true
 		case "sunset":
 			f.sunset = true
+		case "sunrise_azimuth":
+			f.sunriseAzimuth = true
+		case "sunset_azimuth":
+			f.sunsetAzimuth = true
 		case "solar_noon", "solarnoon":
 			f.solarNoon = true
 		case "day_length", "daylength":
@@ -229,6 +278,12 @@ func parseSolarFields(raw string) (fieldSet, error) {
 			f.eveningGolden = true
 		case "evening_blue_hour":
 			f.eveningBlue = true
+		case "civil_twilight":
+			f.civil = true
+		case "nautical_twilight":
+			f.nautical = true
+		case "astronomical_twilight":
+			f.astronomical = true
 		case "":
 			continue
 		default:
@@ -248,6 +303,31 @@ func rangeWindow(r timeRange) twilightWindow {
 		Duration: r.Duration().Round(time.Second).String(),
 	}
 }
+
+// twilightTimes is the dawn/dusk pair for a twilight depression. Either instant
+// is omitted when it does not occur that day.
+type twilightTimes struct {
+	Dawn string `json:"dawn,omitempty"`
+	Dusk string `json:"dusk,omitempty"`
+}
+
+// twilightPair builds a twilightTimes from a dawn/dusk accessor pair, and
+// reports whether either instant occurred.
+func twilightPair(dawn, dusk func() (time.Time, bool)) (twilightTimes, bool) {
+	var tt twilightTimes
+	present := false
+	if t, ok := dawn(); ok {
+		tt.Dawn = t.UTC().Format(time.RFC3339)
+		present = true
+	}
+	if t, ok := dusk(); ok {
+		tt.Dusk = t.UTC().Format(time.RFC3339)
+		present = true
+	}
+	return tt, present
+}
+
+func round2(x float64) float64 { return math.Round(x*100) / 100 }
 
 // solarHandler returns individual sun values (or all of them) for a location on
 // a given date, computed locally. Select values with `field` (comma-separated:
@@ -283,6 +363,18 @@ func solarHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Optional arbitrary-elevation query (?elevation=<deg>), independent of the
+	// field filter: returns the rising/setting crossing times for that angle.
+	var elevation *float64
+	if es := r.URL.Query().Get("elevation"); es != "" {
+		v, perr := strconv.ParseFloat(es, 64)
+		if perr != nil || v < -90 || v > 90 {
+			writeJSONError(w, http.StatusBadRequest, "Invalid 'elevation' parameter, expected degrees in [-90, 90]")
+			return
+		}
+		elevation = &v
+	}
+
 	day := computeSolarDay(date, lat, lng)
 
 	// Include only the requested values that actually occur on this day; a
@@ -296,6 +388,18 @@ func solarHandler(w http.ResponseWriter, r *http.Request) {
 	if fields.sunset {
 		if t, ok := day.Sunset(); ok {
 			out["sunset"] = t.UTC().Format(time.RFC3339)
+		}
+	}
+	if fields.sunriseAzimuth {
+		if t, ok := day.Sunrise(); ok {
+			_, az := sunPosition(t, lat, lng)
+			out["sunrise_azimuth"] = round2(az)
+		}
+	}
+	if fields.sunsetAzimuth {
+		if t, ok := day.Sunset(); ok {
+			_, az := sunPosition(t, lat, lng)
+			out["sunset_azimuth"] = round2(az)
 		}
 	}
 	if fields.solarNoon {
@@ -326,6 +430,31 @@ func solarHandler(w http.ResponseWriter, r *http.Request) {
 			out["evening_blue_hour"] = rangeWindow(win)
 		}
 	}
+	if fields.civil {
+		if tt, ok := twilightPair(day.CivilDawn, day.CivilDusk); ok {
+			out["civil_twilight"] = tt
+		}
+	}
+	if fields.nautical {
+		if tt, ok := twilightPair(day.NauticalDawn, day.NauticalDusk); ok {
+			out["nautical_twilight"] = tt
+		}
+	}
+	if fields.astronomical {
+		if tt, ok := twilightPair(day.AstronomicalDawn, day.AstronomicalDusk); ok {
+			out["astronomical_twilight"] = tt
+		}
+	}
+	if elevation != nil {
+		cross := map[string]any{"degrees": *elevation}
+		if t, ok := day.Crossing(*elevation, true); ok {
+			cross["rising"] = t.UTC().Format(time.RFC3339)
+		}
+		if t, ok := day.Crossing(*elevation, false); ok {
+			cross["setting"] = t.UTC().Format(time.RFC3339)
+		}
+		out["elevation"] = cross
+	}
 
 	if len(out) == 0 {
 		writeJSONError(w, http.StatusUnprocessableEntity,
@@ -338,11 +467,47 @@ func solarHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// positionHandler returns the sun's altitude and azimuth at a location for an
+// instant (`time` RFC3339, default now). Azimuth is degrees clockwise from north.
+func positionHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	lat, lng, err := parseCoords(r)
+	if err != nil {
+		writeJSONError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	t := time.Now().UTC()
+	if ts := r.URL.Query().Get("time"); ts != "" {
+		parsed, perr := time.Parse(time.RFC3339, ts)
+		if perr != nil {
+			writeJSONError(w, http.StatusBadRequest, "Invalid 'time' parameter, expected RFC3339")
+			return
+		}
+		t = parsed
+	}
+
+	altitude, azimuth := sunPosition(t, lat, lng)
+	out := map[string]any{
+		"time":     t.UTC().Format(time.RFC3339),
+		"altitude": round2(altitude),
+		"azimuth":  round2(azimuth),
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(out); err != nil {
+		log.Printf("failed to encode position response for lat=%f lng=%f: %v", lat, lng, err)
+	}
+}
+
 func main() {
 	http.HandleFunc("/health", healthHandler)
 	http.HandleFunc("/api/suntimes", sunTimesHandler)
 	http.HandleFunc("/api/calendar", calendarHandler)
+	http.HandleFunc("/api/calendar/feed", calendarFeedHandler)
 	http.HandleFunc("/api/solar", solarHandler)
+	http.HandleFunc("/api/position", positionHandler)
 
 	addr := ":8080"
 	if port := os.Getenv("PORT"); port != "" {

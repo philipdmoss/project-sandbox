@@ -20,18 +20,27 @@ values, use `/api/solar` below.
 Individual sun values (or all of them) for a location on a date, as JSON,
 computed locally. Backs the same solar helpers the calendar uses.
 
-| param   | required | default        | notes |
-|---------|----------|----------------|-------|
-| `lat`   | yes      | —              | −90..90 |
-| `lng`   | yes      | —              | −180..180 |
-| `date`  | no       | today (UTC)    | `YYYY-MM-DD`, the local day at the location |
-| `field` | no       | all            | comma-separated subset (or `all`) |
+| param       | required | default     | notes |
+|-------------|----------|-------------|-------|
+| `lat`       | yes      | —           | −90..90 |
+| `lng`       | yes      | —           | −180..180 |
+| `date`      | no       | today (UTC) | `YYYY-MM-DD`, the local day at the location |
+| `field`     | no       | all         | comma-separated subset (or `all`) |
+| `elevation` | no       | —           | degrees in [−90, 90]; adds an `elevation` object with the rising/setting crossing times for that sun elevation |
 
-`field` values: `sunrise`, `sunset`, `solar_noon`, `day_length`,
-`morning_blue_hour`, `morning_golden_hour`, `evening_golden_hour`,
-`evening_blue_hour`. Times are UTC RFC 3339; twilight windows are
-`{start, end, duration}`; `day_length` is a duration string. Returns only the
-requested keys.
+`field` values: `sunrise`, `sunset`, `sunrise_azimuth`, `sunset_azimuth`,
+`solar_noon`, `day_length`, `morning_blue_hour`, `morning_golden_hour`,
+`evening_golden_hour`, `evening_blue_hour`, `civil_twilight`,
+`nautical_twilight`, `astronomical_twilight`. Times are UTC RFC 3339; twilight
+windows are `{start, end, duration}`; the `*_twilight` values are `{dawn, dusk}`
+pairs; azimuths are degrees clockwise from true north; `day_length` is a
+duration string. Returns only the requested keys.
+
+Definitions (matching astral / suncalc / PhotoPills): sunrise/sunset are the
+sun's centre at −0.833°; **blue hour** is the sun from −6° to −4°; **golden
+hour** is −4° to +6°, so golden hour straddles the horizon and *contains*
+sunrise/sunset. Civil/nautical/astronomical twilight are the −6/−12/−18°
+depressions.
 
 ```
 # one value
@@ -43,12 +52,25 @@ requested keys.
 
 # everything (field omitted)
 /api/solar?lat=-33.8688&lng=151.2093
+
+# arbitrary sun elevation (e.g. when the sun is 10° up)
+/api/solar?lat=42.3601&lng=-71.0589&field=sunrise&elevation=10
 ```
 
 At high latitudes an event may not occur (polar day/night, or summer "white
 nights" where the sun sets but never reaches −6°, so there is no civil
 twilight). Only the values that actually occur are returned; solar noon always
 does. A 422 is returned only when *none* of the requested values occur.
+
+### `GET /api/position?lat=&lng=&time=`
+The sun's position for an instant, as JSON: `{time, altitude, azimuth}`.
+`time` is RFC 3339 (default now). Altitude is degrees above the horizon
+(geometric); azimuth is degrees clockwise from true north (0=N, 90=E, 180=S).
+
+```
+/api/position?lat=42.3601&lng=-71.0589&time=2026-06-21T16:46:00Z
+-> {"time":"2026-06-21T16:46:00Z","altitude":71.02,"azimuth":179.9}
+```
 
 ### `GET /api/calendar?lat=&lng=&phases=&year=&tz=`
 Generates a **full year** of events as a downloadable iCalendar (`.ics`) file
@@ -64,10 +86,10 @@ no per-day upstream calls are made.
 | `year`   | no       | current year   | 1970..9999 |
 | `tz`     | no       | UTC            | IANA name (e.g. `America/New_York`); see below |
 
-**Phases**
-- `sunrise` / `sunset`: the moments the sun crosses the horizon.
-- `blue_hour`: morning (civil dawn → sunrise) and evening (sunset → civil dusk).
-- `golden_hour`: morning and evening spans, each mirroring the adjacent blue-hour span — matching the definitions used by `/api/suntimes`.
+**Phases** (elevation-based, as in `/api/solar` above)
+- `sunrise` / `sunset`: the moment the sun's centre reaches −0.833°.
+- `blue_hour`: morning and evening, sun −6° → −4°.
+- `golden_hour`: morning and evening, sun −4° → +6° (straddles the horizon, so it contains sunrise/sunset).
 
 **Events**: each day yields at most two events — the requested morning phases
 merged into one, and the requested evening phases merged into one. A merged
@@ -103,13 +125,23 @@ worldwide (including far-east/far-west longitudes).
 ```
 
 **Frontend use**: CORS is open (`Access-Control-Allow-Origin: *`). Link to the
-URL directly to trigger a download, or fetch it and offer it as a Blob. A
-"Subscribe" experience can point Google Calendar's "From URL" at this endpoint.
+URL directly to trigger a download, or fetch it and offer it as a Blob.
+
+### `GET /api/calendar/feed?lat=&lng=&phases=&tz=`
+Same content as `/api/calendar`, but as a **subscribable** calendar: a rolling
+window (current year plus next year), no download disposition, recomputed each
+request. Point a calendar app's "subscribe from URL" (or `webcal://`) at it and
+it stays current. Same `phases`/`tz` params (no `year`).
 
 ## Accuracy
 
-Computed sunrise/sunset agree with `api.sunrise-sunset.org` to within ~2 minutes
-(the two algorithms use slightly different horizon-refraction conventions);
-civil twilight agrees to within seconds. This is validated in `calendar_test.go`
-against captured reference values. The variance is immaterial for planning
-around the ~30–60 minute golden/blue-hour windows.
+Our engine is the NOAA/Meeus solar-position algorithm plus a refinement pass —
+already better than the stock NOAA spreadsheet, and validated in `solar_test.go`
+against captured `api.sunrise-sunset.org` reference values: civil twilight
+agrees to within seconds, sunrise/sunset to within ~2 minutes. That ~2 min is a
+horizon-refraction *convention* difference, not error — we use the standard
+−0.833° (16′ solar semidiameter + 34′ mean refraction); the upstream behaves as
+if it uses ~−1.1°. Real atmospheric refraction near the horizon varies far more
+(0.4–2.1°) than any algorithm choice, and all of this is immaterial for planning
+around the golden/blue-hour windows. Higher-accuracy algorithms (NREL SPA, full
+Meeus) would change rise/set by well under a second — not worth the complexity.
