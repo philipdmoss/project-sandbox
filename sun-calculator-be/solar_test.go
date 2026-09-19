@@ -39,20 +39,20 @@ func TestComputeSolarDayMatchesReference(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			d, _ := time.Parse("2006-01-02", c.date)
 			got := computeSolarDay(d, c.lat, c.lng)
-			if !got.ok {
-				t.Fatalf("computeSolarDay returned ok=false")
+			if !got.civilDawn.Present || !got.sunrise.Present || !got.sunset.Present || !got.civilDusk.Present {
+				t.Fatalf("expected all events present at a mid-latitude location: %+v", got)
 			}
-			assertWithin(t, "sunrise", got.sunrise, c.sunrise, riseSetTol)
-			assertWithin(t, "sunset", got.sunset, c.sunset, riseSetTol)
-			assertWithin(t, "civil-dawn", got.civilDawn, c.civilDawn, twilightTol)
-			assertWithin(t, "civil-dusk", got.civilDusk, c.civilDusk, twilightTol)
+			assertWithin(t, "sunrise", got.sunrise.Time, c.sunrise, riseSetTol)
+			assertWithin(t, "sunset", got.sunset.Time, c.sunset, riseSetTol)
+			assertWithin(t, "civil-dawn", got.civilDawn.Time, c.civilDawn, twilightTol)
+			assertWithin(t, "civil-dusk", got.civilDusk.Time, c.civilDusk, twilightTol)
 
 			// Universal ordering invariant: dawn < sunrise < sunset < dusk.
-			if !(got.civilDawn.Before(got.sunrise) &&
-				got.sunrise.Before(got.sunset) &&
-				got.sunset.Before(got.civilDusk)) {
+			if !(got.civilDawn.Time.Before(got.sunrise.Time) &&
+				got.sunrise.Time.Before(got.sunset.Time) &&
+				got.sunset.Time.Before(got.civilDusk.Time)) {
 				t.Errorf("events out of order: dawn=%s sunrise=%s sunset=%s dusk=%s",
-					got.civilDawn, got.sunrise, got.sunset, got.civilDusk)
+					got.civilDawn.Time, got.sunrise.Time, got.sunset.Time, got.civilDusk.Time)
 			}
 		})
 	}
@@ -65,27 +65,27 @@ func TestComputeSolarDayMatchesReference(t *testing.T) {
 func TestSouthernHemisphereConsistency(t *testing.T) {
 	d, _ := time.Parse("2006-01-02", "2026-12-21")
 	got := computeSolarDay(d, -33.8688, 151.2093)
-	if !got.ok {
-		t.Fatalf("computeSolarDay returned ok=false")
+	if !got.civilDawn.Present || !got.sunrise.Present || !got.sunset.Present || !got.civilDusk.Present {
+		t.Fatalf("expected all events present at Sydney: %+v", got)
 	}
-	if !(got.civilDawn.Before(got.sunrise) &&
-		got.sunrise.Before(got.sunset) &&
-		got.sunset.Before(got.civilDusk)) {
+	if !(got.civilDawn.Time.Before(got.sunrise.Time) &&
+		got.sunrise.Time.Before(got.sunset.Time) &&
+		got.sunset.Time.Before(got.civilDusk.Time)) {
 		t.Fatalf("events out of order: dawn=%s sunrise=%s sunset=%s dusk=%s",
-			got.civilDawn, got.sunrise, got.sunset, got.civilDusk)
+			got.civilDawn.Time, got.sunrise.Time, got.sunset.Time, got.civilDusk.Time)
 	}
-	dayLength := got.sunset.Sub(got.sunrise)
-	if dayLength < 14*time.Hour || dayLength > 15*time.Hour {
-		t.Errorf("Sydney summer day length = %s, expected ~14.5h", dayLength)
+	dayLength, ok := got.DayLength()
+	if !ok || dayLength < 14*time.Hour || dayLength > 15*time.Hour {
+		t.Errorf("Sydney summer day length = %s (ok=%v), expected ~14.5h", dayLength, ok)
 	}
 	// Sunrise and sunset must land on the same local (Sydney) calendar day.
 	loc, err := time.LoadLocation("Australia/Sydney")
 	if err != nil {
 		t.Skipf("tz database unavailable: %v", err)
 	}
-	if got.sunrise.In(loc).Day() != got.sunset.In(loc).Day() {
+	if got.sunrise.Time.In(loc).Day() != got.sunset.Time.In(loc).Day() {
 		t.Errorf("sunrise %s and sunset %s not on same local day",
-			got.sunrise.In(loc), got.sunset.In(loc))
+			got.sunrise.Time.In(loc), got.sunset.Time.In(loc))
 	}
 }
 
@@ -93,42 +93,91 @@ func TestSouthernHemisphereConsistency(t *testing.T) {
 func TestSolarDayHelpers(t *testing.T) {
 	d, _ := time.Parse("2006-01-02", "2026-06-21")
 	s := computeSolarDay(d, 42.3601, -71.0589)
-	if !s.ok {
-		t.Fatalf("computeSolarDay returned ok=false")
+
+	sunrise, hasSunrise := s.Sunrise()
+	sunset, hasSunset := s.Sunset()
+	if !hasSunrise || !hasSunset {
+		t.Fatalf("expected sunrise and sunset at Boston in summer")
 	}
 
 	// Solar noon sits between sunrise and sunset, within a minute of their
 	// midpoint (sunrise and sunset are symmetric about the transit).
-	if !s.SolarNoon().After(s.Sunrise()) || !s.SolarNoon().Before(s.Sunset()) {
-		t.Errorf("solar noon %s not between sunrise %s and sunset %s",
-			s.SolarNoon(), s.Sunrise(), s.Sunset())
+	if !s.SolarNoon().After(sunrise) || !s.SolarNoon().Before(sunset) {
+		t.Errorf("solar noon %s not between sunrise %s and sunset %s", s.SolarNoon(), sunrise, sunset)
 	}
-	midpoint := s.Sunrise().Add(s.DayLength() / 2)
+	dayLen, ok := s.DayLength()
+	if !ok || dayLen != sunset.Sub(sunrise) {
+		t.Errorf("DayLength() = %s (ok=%v), want %s", dayLen, ok, sunset.Sub(sunrise))
+	}
+	midpoint := sunrise.Add(dayLen / 2)
 	if diff := s.SolarNoon().Sub(midpoint); diff > time.Minute || diff < -time.Minute {
 		t.Errorf("solar noon %s far from midpoint %s (diff %s)", s.SolarNoon(), midpoint, diff)
 	}
 
-	if got := s.DayLength(); got != s.Sunset().Sub(s.Sunrise()) {
-		t.Errorf("DayLength() = %s, want %s", got, s.Sunset().Sub(s.Sunrise()))
-	}
-
 	// Blue and golden hours meet at sunrise/sunset, and each golden hour spans
 	// a mirror of the adjacent blue hour.
-	mb, mg := s.MorningBlueHour(), s.MorningGoldenHour()
-	eb, eg := s.EveningBlueHour(), s.EveningGoldenHour()
-	if !mb.End.Equal(s.Sunrise()) || !mg.Start.Equal(s.Sunrise()) {
-		t.Errorf("morning blue/golden should meet at sunrise: blueEnd=%s goldenStart=%s sunrise=%s",
-			mb.End, mg.Start, s.Sunrise())
+	mb, mbOK := s.MorningBlueHour()
+	mg, mgOK := s.MorningGoldenHour()
+	eb, ebOK := s.EveningBlueHour()
+	eg, egOK := s.EveningGoldenHour()
+	if !mbOK || !mgOK || !ebOK || !egOK {
+		t.Fatalf("expected all twilight windows present at Boston in summer")
 	}
-	if !eg.End.Equal(s.Sunset()) || !eb.Start.Equal(s.Sunset()) {
+	if !mb.End.Equal(sunrise) || !mg.Start.Equal(sunrise) {
+		t.Errorf("morning blue/golden should meet at sunrise: blueEnd=%s goldenStart=%s sunrise=%s",
+			mb.End, mg.Start, sunrise)
+	}
+	if !eg.End.Equal(sunset) || !eb.Start.Equal(sunset) {
 		t.Errorf("evening golden/blue should meet at sunset: goldenEnd=%s blueStart=%s sunset=%s",
-			eg.End, eb.Start, s.Sunset())
+			eg.End, eb.Start, sunset)
 	}
 	if mg.Duration() != mb.Duration() {
 		t.Errorf("morning golden %s should mirror morning blue %s", mg.Duration(), mb.Duration())
 	}
 	if eg.Duration() != eb.Duration() {
 		t.Errorf("evening golden %s should mirror evening blue %s", eg.Duration(), eb.Duration())
+	}
+}
+
+// TestHighLatitudeRegimes verifies the independently-optional events: white
+// nights (sunrise/sunset but no civil twilight), polar day (nothing), and a
+// high-latitude winter day with civil twilight but no sunrise.
+func TestHighLatitudeRegimes(t *testing.T) {
+	summer, _ := time.Parse("2006-01-02", "2026-06-21")
+	winter, _ := time.Parse("2006-01-02", "2026-12-21")
+
+	// Svalbard midsummer: polar day — the sun never rises or sets.
+	polar := computeSolarDay(summer, 78.22, 15.63)
+	if polar.sunrise.Present || polar.sunset.Present {
+		t.Errorf("expected polar day at Svalbard midsummer, got sunrise=%v sunset=%v",
+			polar.sunrise.Present, polar.sunset.Present)
+	}
+
+	// High-latitude winter (70N): the sun clears −6° (civil twilight) but never
+	// reaches −0.833°, so there is twilight but no sunrise/sunset.
+	polarWinter := computeSolarDay(winter, 70, 25)
+	if polarWinter.sunrise.Present || polarWinter.sunset.Present {
+		t.Errorf("expected no sunrise/sunset at 70N midwinter")
+	}
+	if !polarWinter.civilDawn.Present || !polarWinter.civilDusk.Present {
+		t.Errorf("expected civil twilight at 70N midwinter (sun reaches -6 but not -0.833)")
+	}
+
+	// Find a mid-high latitude in summer with sunrise/sunset but no civil
+	// twilight (white nights). Sweep a few latitudes to stay robust.
+	foundWhiteNight := false
+	for _, lat := range []float64{60, 62, 63, 64, 65} {
+		s := computeSolarDay(summer, lat, 10)
+		if s.sunrise.Present && s.sunset.Present && !s.civilDawn.Present && !s.civilDusk.Present {
+			foundWhiteNight = true
+			if _, ok := s.MorningBlueHour(); ok {
+				t.Errorf("white night at %fN should have no morning blue hour", lat)
+			}
+			break
+		}
+	}
+	if !foundWhiteNight {
+		t.Errorf("expected a white-night regime (sunrise/sunset, no civil twilight) at some 60-65N latitude")
 	}
 }
 

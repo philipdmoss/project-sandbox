@@ -45,8 +45,10 @@ requested keys.
 /api/solar?lat=-33.8688&lng=151.2093
 ```
 
-A 422 is returned for locations/dates where the sun does not rise and set
-(polar day or night).
+At high latitudes an event may not occur (polar day/night, or summer "white
+nights" where the sun sets but never reaches −6°, so there is no civil
+twilight). Only the values that actually occur are returned; solar noon always
+does. A 422 is returned only when *none* of the requested values occur.
 
 ### `GET /api/calendar?lat=&lng=&phases=&year=&tz=`
 Generates a **full year** of events as a downloadable iCalendar (`.ics`) file
@@ -62,10 +64,20 @@ no per-day upstream calls are made.
 | `year`   | no       | current year   | 1970..9999 |
 | `tz`     | no       | UTC            | IANA name (e.g. `America/New_York`); see below |
 
-**Phases → events**
-- `sunrise` / `sunset`: short 15-minute blocks starting at the event, so they render as clickable events in day/week views.
-- `blue_hour`: morning (civil dawn → sunrise) and evening (sunset → civil dusk) spans.
+**Phases**
+- `sunrise` / `sunset`: the moments the sun crosses the horizon.
+- `blue_hour`: morning (civil dawn → sunrise) and evening (sunset → civil dusk).
 - `golden_hour`: morning and evening spans, each mirroring the adjacent blue-hour span — matching the definitions used by `/api/suntimes`.
+
+**Events**: each day yields at most two events — the requested morning phases
+merged into one, and the requested evening phases merged into one. A merged
+event spans from the earliest requested piece's start to the latest piece's end
+(morning order: blue hour → sunrise → golden hour; evening: golden hour →
+sunset → blue hour), is titled with the pieces it contains
+(e.g. `🌅 Blue Hour · Sunrise · Golden Hour`), and its description lists each
+piece's time/range/duration. Pieces that don't occur that day (high-latitude
+summer/winter) are left out; a morning containing only a sunrise renders as a
+short block so it stays clickable.
 
 **Timezone / display**
 - No `tz`: event times are written as absolute UTC instants (`...Z`). The

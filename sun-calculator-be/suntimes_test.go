@@ -30,11 +30,11 @@ func TestSunTimesHandlerLocal(t *testing.T) {
 			t.Errorf("%s is empty", name)
 		}
 	}
-	for name, win := range map[string]twilightWindow{
+	for name, win := range map[string]*twilightWindow{
 		"morning_blue_hour": resp.MorningBlueHour, "morning_golden_hour": resp.MorningGoldenHour,
 		"evening_golden_hour": resp.EveningGoldenHour, "evening_blue_hour": resp.EveningBlueHour,
 	} {
-		if win.Start == "" || win.End == "" || win.Duration == "" {
+		if win == nil || win.Start == "" || win.End == "" || win.Duration == "" {
 			t.Errorf("%s window incomplete: %+v", name, win)
 		}
 	}
@@ -48,6 +48,8 @@ func TestSunTimesHandlerErrors(t *testing.T) {
 	}{
 		{"missing coords", "/api/suntimes", http.StatusBadRequest},
 		{"bad lat", "/api/suntimes?lat=999&lng=1", http.StatusBadRequest},
+		{"NaN coords", "/api/suntimes?lat=NaN&lng=NaN", http.StatusBadRequest},
+		{"Inf coords", "/api/suntimes?lat=Inf&lng=0", http.StatusBadRequest},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

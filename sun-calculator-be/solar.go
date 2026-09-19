@@ -24,51 +24,79 @@ type timeRange struct {
 // Duration returns how long the range lasts.
 func (r timeRange) Duration() time.Duration { return r.End.Sub(r.Start) }
 
-// solarDay holds the boundary instants (all UTC) for a single local day, from
-// which every twilight window and marker is derived.
-type solarDay struct {
-	civilDawn time.Time
-	sunrise   time.Time
-	solarNoon time.Time
-	sunset    time.Time
-	civilDusk time.Time
-	// ok is false on days where the sun never reaches an angle (polar day or
-	// polar night); such days are skipped rather than producing bogus events.
-	ok bool
+// optionalTime is an instant that may not occur on a given day: at high
+// latitudes the sun can fail to reach a required elevation (polar day/night, or
+// the summer "white nights" where the sun sets but never drops to −6°).
+type optionalTime struct {
+	Time    time.Time
+	Present bool
 }
 
-// Sunrise is the instant the sun's upper limb clears the horizon.
-func (s solarDay) Sunrise() time.Time { return s.sunrise }
+// solarDay holds the boundary instants (all UTC) for a single local day, from
+// which every twilight window and marker is derived. Sunrise, sunset and civil
+// twilight are each independently optional; solar noon (the meridian transit)
+// always exists, even when the sun stays entirely above or below the horizon.
+type solarDay struct {
+	civilDawn optionalTime
+	sunrise   optionalTime
+	solarNoon time.Time
+	sunset    optionalTime
+	civilDusk optionalTime
+}
 
-// Sunset is the instant the sun's upper limb drops below the horizon.
-func (s solarDay) Sunset() time.Time { return s.sunset }
+// Sunrise is the instant the sun's upper limb clears the horizon, if it does.
+func (s solarDay) Sunrise() (time.Time, bool) { return s.sunrise.Time, s.sunrise.Present }
+
+// Sunset is the instant the sun's upper limb drops below the horizon, if it does.
+func (s solarDay) Sunset() (time.Time, bool) { return s.sunset.Time, s.sunset.Present }
 
 // SolarNoon is the instant the sun transits the local meridian (its highest
-// point of the day).
+// point of the day). It always occurs.
 func (s solarDay) SolarNoon() time.Time { return s.solarNoon }
 
-// DayLength is the time between sunrise and sunset.
-func (s solarDay) DayLength() time.Duration { return s.sunset.Sub(s.sunrise) }
+// DayLength is the time between sunrise and sunset; false if either is absent.
+func (s solarDay) DayLength() (time.Duration, bool) {
+	if s.sunrise.Present && s.sunset.Present {
+		return s.sunset.Time.Sub(s.sunrise.Time), true
+	}
+	return 0, false
+}
 
-// MorningBlueHour runs from civil dawn to sunrise.
-func (s solarDay) MorningBlueHour() timeRange {
-	return timeRange{Start: s.civilDawn, End: s.sunrise}
+// MorningBlueHour runs from civil dawn to sunrise; false if either is absent.
+func (s solarDay) MorningBlueHour() (timeRange, bool) {
+	if s.civilDawn.Present && s.sunrise.Present {
+		return timeRange{Start: s.civilDawn.Time, End: s.sunrise.Time}, true
+	}
+	return timeRange{}, false
 }
 
 // MorningGoldenHour runs from sunrise for a span mirroring the morning blue
-// hour, matching the definition used by the single-day endpoint.
-func (s solarDay) MorningGoldenHour() timeRange {
-	return timeRange{Start: s.sunrise, End: s.sunrise.Add(s.sunrise.Sub(s.civilDawn))}
+// hour, matching the definition used by the single-day endpoint. It requires
+// both civil dawn and sunrise.
+func (s solarDay) MorningGoldenHour() (timeRange, bool) {
+	if s.civilDawn.Present && s.sunrise.Present {
+		span := s.sunrise.Time.Sub(s.civilDawn.Time)
+		return timeRange{Start: s.sunrise.Time, End: s.sunrise.Time.Add(span)}, true
+	}
+	return timeRange{}, false
 }
 
 // EveningGoldenHour ends at sunset, spanning a mirror of the evening blue hour.
-func (s solarDay) EveningGoldenHour() timeRange {
-	return timeRange{Start: s.sunset.Add(-s.civilDusk.Sub(s.sunset)), End: s.sunset}
+// It requires both sunset and civil dusk.
+func (s solarDay) EveningGoldenHour() (timeRange, bool) {
+	if s.sunset.Present && s.civilDusk.Present {
+		span := s.civilDusk.Time.Sub(s.sunset.Time)
+		return timeRange{Start: s.sunset.Time.Add(-span), End: s.sunset.Time}, true
+	}
+	return timeRange{}, false
 }
 
-// EveningBlueHour runs from sunset to civil dusk.
-func (s solarDay) EveningBlueHour() timeRange {
-	return timeRange{Start: s.sunset, End: s.civilDusk}
+// EveningBlueHour runs from sunset to civil dusk; false if either is absent.
+func (s solarDay) EveningBlueHour() (timeRange, bool) {
+	if s.sunset.Present && s.civilDusk.Present {
+		return timeRange{Start: s.sunset.Time, End: s.civilDusk.Time}, true
+	}
+	return timeRange{}, false
 }
 
 // computeSolarDay calculates sunrise, sunset, solar noon and civil twilight for
@@ -80,6 +108,12 @@ func (s solarDay) EveningBlueHour() timeRange {
 // twilight windows are always grouped under the same local day even at far-east
 // or far-west longitudes (anchoring on UTC midnight instead would file an early
 // local sunrise under the previous UTC day).
+//
+// Sunrise/sunset (the −0.833° crossing) and civil twilight (−6°) are computed
+// independently: a high-latitude summer day can have a sunrise and sunset with
+// no civil twilight in between, and a high-latitude winter day can have civil
+// twilight but no sunrise. Absent events are marked not-present rather than
+// invalidating the whole day.
 func computeSolarDay(date time.Time, lat, lng float64) solarDay {
 	// Local mean noon, expressed as a UTC instant: 12:00 local shifted by the
 	// location's longitude (15 degrees per hour, east of Greenwich is earlier).
@@ -87,7 +121,7 @@ func computeSolarDay(date time.Time, lat, lng float64) solarDay {
 		Add(time.Duration(-lng / 15 * float64(time.Hour)))
 
 	// Apparent solar noon (transit) is mean noon corrected by the equation of
-	// time evaluated at that moment.
+	// time evaluated at that moment. The transit always occurs.
 	_, eqOfTimeAtNoon := solarParams(julianDay(meanNoon))
 	solarNoon := meanNoon.Add(time.Duration(-eqOfTimeAtNoon * float64(time.Minute)))
 
@@ -95,17 +129,13 @@ func computeSolarDay(date time.Time, lat, lng float64) solarDay {
 	sunset, setOK := solarEvent(meanNoon, lat, sunriseSunsetAngle, false)
 	civilDawn, dawnOK := solarEvent(meanNoon, lat, civilTwilightAngle, true)
 	civilDusk, duskOK := solarEvent(meanNoon, lat, civilTwilightAngle, false)
-	if !riseOK || !setOK || !dawnOK || !duskOK {
-		return solarDay{ok: false}
-	}
 
 	return solarDay{
-		civilDawn: civilDawn,
-		sunrise:   sunrise,
+		civilDawn: optionalTime{Time: civilDawn, Present: dawnOK},
+		sunrise:   optionalTime{Time: sunrise, Present: riseOK},
 		solarNoon: solarNoon,
-		sunset:    sunset,
-		civilDusk: civilDusk,
-		ok:        true,
+		sunset:    optionalTime{Time: sunset, Present: setOK},
+		civilDusk: optionalTime{Time: civilDusk, Present: duskOK},
 	}
 }
 

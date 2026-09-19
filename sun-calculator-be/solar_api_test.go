@@ -88,6 +88,7 @@ func TestSolarHandlerErrors(t *testing.T) {
 	}{
 		{"missing coords", "/api/solar", http.StatusBadRequest},
 		{"bad lat", "/api/solar?lat=999&lng=1", http.StatusBadRequest},
+		{"NaN coords", "/api/solar?lat=NaN&lng=NaN&field=sunrise", http.StatusBadRequest},
 		{"bad date", "/api/solar?lat=1&lng=1&date=nope", http.StatusBadRequest},
 		{"bad field", "/api/solar?lat=1&lng=1&field=banana", http.StatusBadRequest},
 		{"empty field", "/api/solar?lat=1&lng=1&field=,", http.StatusBadRequest},
