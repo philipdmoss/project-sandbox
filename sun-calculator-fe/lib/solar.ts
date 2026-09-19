@@ -31,10 +31,13 @@ export interface PhaseSegment {
   end: Date;
 }
 
+export type TimelinePhase = "blue" | "golden" | "day";
+
 export interface TimelineMarker {
+  id: string;
   label: string;
   at: Date;
-  phase: "blue" | "golden" | "day";
+  phase: TimelinePhase;
 }
 
 export interface Moment {
@@ -100,13 +103,13 @@ export function buildSegments(data: SunTimesResponse): PhaseSegment[] {
 
 export function buildTimeline(data: SunTimesResponse): TimelineMarker[] {
   return [
-    { label: "Blue hour starts", at: new Date(data.morning_blue_hour.start), phase: "blue" },
-    { label: "Sunrise", at: new Date(data.sunrise), phase: "golden" },
-    { label: "Golden hour ends", at: new Date(data.morning_golden_hour.end), phase: "golden" },
-    { label: "Solar noon", at: new Date(data.solar_noon), phase: "day" },
-    { label: "Golden hour starts", at: new Date(data.evening_golden_hour.start), phase: "golden" },
-    { label: "Sunset", at: new Date(data.sunset), phase: "golden" },
-    { label: "Blue hour ends", at: new Date(data.evening_blue_hour.end), phase: "blue" },
+    { id: "morning-blue-start", label: "Blue hour starts", at: new Date(data.morning_blue_hour.start), phase: "blue" },
+    { id: "sunrise", label: "Sunrise", at: new Date(data.sunrise), phase: "golden" },
+    { id: "morning-golden-end", label: "Golden hour ends", at: new Date(data.morning_golden_hour.end), phase: "golden" },
+    { id: "solar-noon", label: "Solar noon", at: new Date(data.solar_noon), phase: "day" },
+    { id: "evening-golden-start", label: "Golden hour starts", at: new Date(data.evening_golden_hour.start), phase: "golden" },
+    { id: "sunset", label: "Sunset", at: new Date(data.sunset), phase: "golden" },
+    { id: "evening-blue-end", label: "Blue hour ends", at: new Date(data.evening_blue_hour.end), phase: "blue" },
   ];
 }
 
@@ -165,11 +168,15 @@ export function formatCountdown(ms: number): string {
   return `${seconds}s`;
 }
 
+export interface ClockOptions {
+  timeZone?: string;
+  showSeconds?: boolean;
+  showZone?: boolean;
+}
+
 export function formatClock(
   date: Date,
-  timeZone?: string,
-  showSeconds = false,
-  showZone = false,
+  { timeZone, showSeconds = false, showZone = false }: ClockOptions = {},
 ): string {
   return new Intl.DateTimeFormat("en-US", {
     hour: "numeric",

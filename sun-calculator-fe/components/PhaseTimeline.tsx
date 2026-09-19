@@ -1,11 +1,16 @@
-import { buildTimeline, formatClock, type SunTimesResponse } from "@/lib/solar";
+import {
+  buildTimeline,
+  formatClock,
+  type SunTimesResponse,
+  type TimelinePhase,
+} from "@/lib/solar";
 
 interface Props {
   data: SunTimesResponse;
   timeZone?: string;
 }
 
-const phaseStyles = {
+const phaseStyles: Record<TimelinePhase, { card: string; dot: string }> = {
   blue: {
     card: "bg-blue-950/60 ring-blue-400/30",
     dot: "bg-blue-400",
@@ -39,7 +44,7 @@ export default function PhaseTimeline({ data, timeZone }: Props) {
               </div>
             </div>
             <div className="font-mono text-sm text-white">
-              {formatClock(marker.at, timeZone)}
+              {formatClock(marker.at, { timeZone })}
             </div>
           </div>
         );

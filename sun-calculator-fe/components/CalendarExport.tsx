@@ -1,38 +1,70 @@
 "use client";
 
 import { useState } from "react";
+import { CALENDAR_PHASES, type CalendarPhaseKey } from "@/lib/calendar";
 
 interface Props {
   coords: { lat: number; lng: number };
   timeZone?: string;
 }
 
-const PHASES = [
-  { key: "sunrise", label: "Sunrise" },
-  { key: "sunset", label: "Sunset" },
-  { key: "golden_hour", label: "Golden hour" },
-  { key: "blue_hour", label: "Blue hour" },
-];
+function currentYear(timeZone?: string): number {
+  const formatted = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+  }).format(new Date());
+  return Number(formatted);
+}
 
 export default function CalendarExport({ coords, timeZone }: Props) {
-  const [selected, setSelected] = useState<Record<string, boolean>>({
+  const [selected, setSelected] = useState<Record<CalendarPhaseKey, boolean>>({
     sunrise: true,
     sunset: true,
     golden_hour: true,
     blue_hour: true,
   });
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const chosen = PHASES.filter((p) => selected[p.key]).map((p) => p.key);
-  const year = new Date().getFullYear();
+  const chosen = CALENDAR_PHASES.filter((p) => selected[p.key]).map((p) => p.key);
+  const year = currentYear(timeZone);
 
-  const params = new URLSearchParams({
-    lat: String(coords.lat),
-    lng: String(coords.lng),
-    phases: chosen.join(","),
-    year: String(year),
-  });
-  if (timeZone) params.set("tz", timeZone);
-  const href = `/api/calendar?${params.toString()}`;
+  async function download() {
+    if (!chosen.length || downloading) return;
+    setDownloading(true);
+    setError(null);
+
+    const params = new URLSearchParams({
+      lat: String(coords.lat),
+      lng: String(coords.lng),
+      phases: chosen.join(","),
+      year: String(year),
+    });
+    if (timeZone) params.set("tz", timeZone);
+
+    try {
+      const response = await fetch(`/api/calendar?${params.toString()}`);
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error ?? "Couldn't build the calendar.");
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `sun-phases-${year}.ics`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Couldn't build the calendar.",
+      );
+    } finally {
+      setDownloading(false);
+    }
+  }
 
   return (
     <div className="rounded-2xl bg-black/40 p-6 ring-1 ring-white/15 backdrop-blur">
@@ -43,7 +75,7 @@ export default function CalendarExport({ coords, timeZone }: Props) {
         Download a full year of sun phases as an .ics file for {year}.
       </p>
       <div className="mt-4 flex flex-wrap gap-2">
-        {PHASES.map((p) => (
+        {CALENDAR_PHASES.map((p) => (
           <button
             key={p.key}
             type="button"
@@ -61,18 +93,15 @@ export default function CalendarExport({ coords, timeZone }: Props) {
           </button>
         ))}
       </div>
-      <a
-        href={chosen.length ? href : undefined}
-        download
-        aria-disabled={chosen.length === 0}
-        className={`mt-4 inline-block rounded-xl px-4 py-2 text-sm font-medium transition ${
-          chosen.length
-            ? "bg-white text-slate-900 hover:bg-white/90"
-            : "pointer-events-none bg-white/20 text-white/40"
-        }`}
+      <button
+        type="button"
+        onClick={download}
+        disabled={!chosen.length || downloading}
+        className="mt-4 inline-block rounded-xl bg-white px-4 py-2 text-sm font-medium text-slate-900 transition hover:bg-white/90 disabled:cursor-not-allowed disabled:bg-white/20 disabled:text-white/40"
       >
-        Download .ics
-      </a>
+        {downloading ? "Preparing…" : "Download .ics"}
+      </button>
+      {error && <p className="mt-3 text-sm text-rose-300">{error}</p>}
     </div>
   );
 }

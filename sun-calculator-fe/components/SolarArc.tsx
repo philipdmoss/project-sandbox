@@ -13,6 +13,17 @@ const X0 = 60;
 const X1 = 740;
 const AMPLITUDE = 168;
 
+const ARC_MARKER_IDS = new Set([
+  "morning-blue-start",
+  "sunrise",
+  "solar-noon",
+  "sunset",
+  "evening-blue-end",
+]);
+
+const CROWDED_X_GAP = 96;
+const STAGGER = 30;
+
 function pointFor(fraction: number) {
   const clamped = Math.min(1, Math.max(0, fraction));
   return {
@@ -31,6 +42,39 @@ export default function SolarArc({ data, now, timeZone }: Props) {
   const timeline = buildTimeline(data);
   const dawn = timeline[0].at;
   const dusk = timeline[timeline.length - 1].at;
+  const daySpanMs = dusk.getTime() - dawn.getTime();
+
+  if (!(daySpanMs > 0)) {
+    return (
+      <svg
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        className="h-auto w-full"
+        role="img"
+        aria-label="Sun path unavailable for this location today"
+      >
+        <line
+          x1={X0 - 20}
+          y1={HORIZON}
+          x2={X1 + 20}
+          y2={HORIZON}
+          stroke="#ffffff"
+          strokeOpacity="0.35"
+          strokeWidth="1"
+        />
+        <text
+          x={WIDTH / 2}
+          y={HORIZON - 24}
+          textAnchor="middle"
+          fill="#ffffff"
+          fillOpacity="0.7"
+          fontSize="15"
+          fontFamily="var(--font-geist-sans), system-ui, sans-serif"
+        >
+          The sun doesn&apos;t rise and set here today.
+        </text>
+      </svg>
+    );
+  }
 
   const arcPoints = Array.from({ length: 121 }, (_, i) => pointFor(i / 120));
   const arcPath = arcPoints
@@ -38,34 +82,29 @@ export default function SolarArc({ data, now, timeZone }: Props) {
     .join(" ");
   const areaPath = `${arcPath} L ${X1} ${HORIZON} L ${X0} ${HORIZON} Z`;
 
-  const shownMarkers = [timeline[0], timeline[1], timeline[3], timeline[5], timeline[6]];
+  const shownMarkers = timeline.filter((m) => ARC_MARKER_IDS.has(m.id));
   const nowFraction = fractionFor(now, dawn, dusk);
   const sunVisible = nowFraction >= 0 && nowFraction <= 1;
   const sun = pointFor(nowFraction);
 
-  // Lay out labels: endpoints drop below the horizon (empty space, clear of the
-  // clustered interior markers), while interior labels sit above the arc and
-  // stagger upward whenever they land too close in x to the previous one.
-  const MIN_X_GAP = 96;
-  const STAGGER = 30;
   const lastIndex = shownMarkers.length - 1;
   let prevX = -Infinity;
   let level = 0;
   const laidOut = shownMarkers.map((marker, i) => {
     const point = pointFor(fractionFor(marker.at, dawn, dusk));
-    const isEndpoint = i === 0 || i === lastIndex;
+    const endpointBelowHorizon = i === 0 || i === lastIndex;
     let labelY: number;
     let timeY: number;
-    if (isEndpoint) {
+    if (endpointBelowHorizon) {
       labelY = HORIZON + 30;
       timeY = HORIZON + 46;
     } else {
-      level = point.x - prevX < MIN_X_GAP ? level + 1 : 0;
+      level = point.x - prevX < CROWDED_X_GAP ? level + 1 : 0;
       prevX = point.x;
       labelY = point.y - 28 - level * STAGGER;
       timeY = point.y - 14 - level * STAGGER;
     }
-    return { marker, point, labelY, timeY, isEndpoint };
+    return { marker, point, labelY, timeY, isEndpoint: endpointBelowHorizon };
   });
 
   return (
@@ -164,7 +203,7 @@ export default function SolarArc({ data, now, timeZone }: Props) {
               strokeLinejoin="round"
               paintOrder="stroke"
             >
-              {formatClock(marker.at, timeZone)}
+              {formatClock(marker.at, { timeZone })}
             </text>
           </g>
         );

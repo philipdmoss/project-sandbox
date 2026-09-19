@@ -12,7 +12,9 @@ export default function StatusPanel({ moment, placeName, now, timeZone }: Props)
     <div className="rounded-2xl bg-black/50 p-6 ring-1 ring-white/15 backdrop-blur">
       <div className="flex items-center justify-between text-sm text-white/70">
         <span className="font-medium">{placeName}</span>
-        <span className="font-mono">{formatClock(now, timeZone, true, true)}</span>
+        <span className="font-mono">
+          {formatClock(now, { timeZone, showSeconds: true, showZone: true })}
+        </span>
       </div>
       <p className="mt-4 text-xs uppercase tracking-widest text-white/50">
         Current status
