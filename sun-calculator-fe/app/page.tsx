@@ -1,7 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { describeMoment, type SunTimesResponse } from "@/lib/solar";
+import {
+  describeMoment,
+  type PositionResponse,
+  type SunTimesResponse,
+} from "@/lib/solar";
 import { geocodePlace } from "@/lib/geocode";
 import PhaseBackground from "@/components/PhaseBackground";
 import SearchBar from "@/components/SearchBar";
@@ -13,6 +17,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
 export default function Home() {
   const [data, setData] = useState<SunTimesResponse | null>(null);
+  const [peakAltitude, setPeakAltitude] = useState<number | null>(null);
   const [placeName, setPlaceName] = useState("");
   const [timeZone, setTimeZone] = useState<string | undefined>(undefined);
   const [now, setNow] = useState<Date>(() => new Date());
@@ -52,6 +57,21 @@ export default function Home() {
         setData(payload);
         setPlaceName(name);
         setTimeZone(tz);
+
+        // Peak altitude at solar noon scales the arc; a failure just makes the
+        // arc top out at its highest known anchor (+6°).
+        setPeakAltitude(null);
+        try {
+          const posResponse = await fetch(
+            `${API_BASE}/api/position?lat=${lat}&lng=${lng}&time=${encodeURIComponent(payload.solar_noon)}`,
+          );
+          if (posResponse.ok) {
+            const position: PositionResponse = await posResponse.json();
+            setPeakAltitude(position.altitude);
+          }
+        } catch {
+          // ignore — arc falls back gracefully
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong.");
       } finally {
@@ -144,12 +164,18 @@ export default function Home() {
           <div className="mt-8 space-y-6">
             <StatusPanel
               moment={moment}
+              data={data}
               placeName={placeName}
               now={now}
               timeZone={timeZone}
             />
             <div className="rounded-2xl bg-black/25 p-4 ring-1 ring-white/15 backdrop-blur">
-              <SolarArc data={data} now={now} timeZone={timeZone} />
+              <SolarArc
+                data={data}
+                now={now}
+                timeZone={timeZone}
+                peakAltitude={peakAltitude}
+              />
             </div>
             <PhaseTimeline data={data} timeZone={timeZone} />
           </div>

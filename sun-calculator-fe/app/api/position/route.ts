@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// The sun-calculator Go backend. Configure BACKEND_URL for deployment; defaults
-// to the local dev server.
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:8080";
 
-// Proxies the backend's /api/solar (all fields) so the frontend gets one
-// source of truth: sunrise/sunset, the elevation-based golden/blue hours,
-// azimuths, day length, solar noon, and civil/nautical/astronomical twilight.
+// Proxies the backend's /api/position (sun altitude + azimuth at an instant).
 export async function GET(request: NextRequest) {
   const lat = request.nextUrl.searchParams.get("lat");
   const lng = request.nextUrl.searchParams.get("lng");
@@ -17,12 +13,11 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const url = new URL(`${BACKEND_URL}/api/solar`);
+  const url = new URL(`${BACKEND_URL}/api/position`);
   url.searchParams.set("lat", lat);
   url.searchParams.set("lng", lng);
-  const date = request.nextUrl.searchParams.get("date");
-  if (date) url.searchParams.set("date", date);
-  // `field` omitted → the backend returns every value.
+  const time = request.nextUrl.searchParams.get("time");
+  if (time) url.searchParams.set("time", time);
 
   try {
     const response = await fetch(url, { cache: "no-store" });

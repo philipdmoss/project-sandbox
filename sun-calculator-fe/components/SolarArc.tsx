@@ -1,174 +1,168 @@
-import { buildTimeline, formatClock, type SunTimesResponse } from "@/lib/solar";
+import {
+  buildElevationAnchors,
+  elevationAt,
+  formatClock,
+  type SunTimesResponse,
+  type TwilightWindow,
+} from "@/lib/solar";
 
 interface Props {
   data: SunTimesResponse;
   now: Date;
   timeZone?: string;
+  peakAltitude: number | null;
 }
 
 const WIDTH = 800;
 const HEIGHT = 340;
-const HORIZON = 245;
 const X0 = 60;
 const X1 = 740;
-const AMPLITUDE = 168;
+const TOP = 34;
+const BOTTOM = 300;
 
-function pointFor(fraction: number) {
-  const clamped = Math.min(1, Math.max(0, fraction));
-  return {
-    x: X0 + clamped * (X1 - X0),
-    y: HORIZON - Math.sin(clamped * Math.PI) * AMPLITUDE,
-  };
-}
+export default function SolarArc({ data, now, timeZone, peakAltitude }: Props) {
+  const anchors = buildElevationAnchors(data, peakAltitude);
+  if (anchors.length < 2) {
+    return (
+      <p className="py-8 text-center text-sm text-white/60">
+        The sun doesn&apos;t rise and set here today.
+      </p>
+    );
+  }
 
-function fractionFor(instant: Date, dawn: Date, dusk: Date) {
-  return (
-    (instant.getTime() - dawn.getTime()) / (dusk.getTime() - dawn.getTime())
-  );
-}
+  const first = anchors[0].at.getTime();
+  const last = anchors[anchors.length - 1].at.getTime();
+  const span = last - first || 1;
 
-export default function SolarArc({ data, now, timeZone }: Props) {
-  const timeline = buildTimeline(data);
-  const dawn = timeline[0].at;
-  const dusk = timeline[timeline.length - 1].at;
+  const elevations = anchors.map((a) => a.elevation);
+  const eMax = Math.max(...elevations, 6);
+  const eMin = Math.min(...elevations, -6);
 
-  const arcPoints = Array.from({ length: 121 }, (_, i) => pointFor(i / 120));
-  const arcPath = arcPoints
-    .map((p, i) => `${i === 0 ? "M" : "L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`)
+  const xFor = (t: number) => X0 + ((t - first) / span) * (X1 - X0);
+  const yFor = (e: number) => BOTTOM - ((e - eMin) / (eMax - eMin)) * (BOTTOM - TOP);
+
+  const horizonY = yFor(0);
+  const arcPath = anchors
+    .map((a, i) => `${i === 0 ? "M" : "L"} ${xFor(a.at.getTime()).toFixed(1)} ${yFor(a.elevation).toFixed(1)}`)
     .join(" ");
-  const areaPath = `${arcPath} L ${X1} ${HORIZON} L ${X0} ${HORIZON} Z`;
+  const areaPath = `${arcPath} L ${xFor(last).toFixed(1)} ${horizonY.toFixed(1)} L ${xFor(first).toFixed(1)} ${horizonY.toFixed(1)} Z`;
 
-  const shownMarkers = [timeline[0], timeline[1], timeline[3], timeline[5], timeline[6]];
-  const nowFraction = fractionFor(now, dawn, dusk);
-  const sunVisible = nowFraction >= 0 && nowFraction <= 1;
-  const sun = pointFor(nowFraction);
+  // Golden/blue-hour periods drawn as tinted vertical bands under the arc.
+  const bandRect = (win: TwilightWindow | undefined) => {
+    if (!win) return null;
+    const x = xFor(new Date(win.start).getTime());
+    const w = xFor(new Date(win.end).getTime()) - x;
+    return { x, w };
+  };
+  const goldBands = [data.morning_golden_hour, data.evening_golden_hour]
+    .map(bandRect)
+    .filter((b): b is { x: number; w: number } => b !== null);
+  const blueBands = [data.morning_blue_hour, data.evening_blue_hour]
+    .map(bandRect)
+    .filter((b): b is { x: number; w: number } => b !== null);
 
-  // Lay out labels: endpoints drop below the horizon (empty space, clear of the
-  // clustered interior markers), while interior labels sit above the arc and
-  // stagger upward whenever they land too close in x to the previous one.
-  const MIN_X_GAP = 96;
-  const STAGGER = 30;
-  const lastIndex = shownMarkers.length - 1;
-  let prevX = -Infinity;
-  let level = 0;
-  const laidOut = shownMarkers.map((marker, i) => {
-    const point = pointFor(fractionFor(marker.at, dawn, dusk));
-    const isEndpoint = i === 0 || i === lastIndex;
-    let labelY: number;
-    let timeY: number;
-    if (isEndpoint) {
-      labelY = HORIZON + 30;
-      timeY = HORIZON + 46;
-    } else {
-      level = point.x - prevX < MIN_X_GAP ? level + 1 : 0;
-      prevX = point.x;
-      labelY = point.y - 28 - level * STAGGER;
-      timeY = point.y - 14 - level * STAGGER;
-    }
-    return { marker, point, labelY, timeY, isEndpoint };
-  });
+  const nowMs = now.getTime();
+  const sunVisible = nowMs >= first && nowMs <= last;
+  const sunElevation = elevationAt(anchors, now);
+  const sunX = xFor(nowMs);
+  const sunY = yFor(sunElevation);
+
+  const markers = [
+    { label: "Sunrise", iso: data.sunrise },
+    { label: "Solar noon", iso: data.solar_noon },
+    { label: "Sunset", iso: data.sunset },
+  ].filter((m): m is { label: string; iso: string } => Boolean(m.iso));
 
   return (
-    <svg
-      viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-      className="h-auto w-full"
-      role="img"
-      aria-label="Sun path across the day"
-    >
-      <defs>
-        <linearGradient id="arcFill" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.28" />
-          <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-        </linearGradient>
-        <radialGradient id="sunGlow">
-          <stop offset="0%" stopColor="#fff7e0" />
-          <stop offset="100%" stopColor="#ffcf6b" />
-        </radialGradient>
-      </defs>
+    <div>
+      <svg
+        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+        className="h-auto w-full"
+        role="img"
+        aria-label="Sun altitude across the day, with golden and blue hours marked"
+      >
+        <defs>
+          <linearGradient id="arcFill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#ffffff" stopOpacity="0.22" />
+            <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
+          </linearGradient>
+          <radialGradient id="sunGlow">
+            <stop offset="0%" stopColor="#fff7e0" />
+            <stop offset="100%" stopColor="#ffcf6b" />
+          </radialGradient>
+        </defs>
 
-      <path d={areaPath} fill="url(#arcFill)" />
-      <line
-        x1={X0 - 20}
-        y1={HORIZON}
-        x2={X1 + 20}
-        y2={HORIZON}
-        stroke="#ffffff"
-        strokeOpacity="0.35"
-        strokeWidth="1"
-      />
-      <path
-        d={arcPath}
-        fill="none"
-        stroke="#ffffff"
-        strokeOpacity="0.7"
-        strokeWidth="2"
-        strokeDasharray="4 6"
-      />
+        {/* Golden-hour and blue-hour periods */}
+        {goldBands.map((b, i) => (
+          <rect key={`g${i}`} x={b.x} y={TOP} width={b.w} height={BOTTOM - TOP} fill="#e2a036" fillOpacity="0.22" />
+        ))}
+        {blueBands.map((b, i) => (
+          <rect key={`b${i}`} x={b.x} y={TOP} width={b.w} height={BOTTOM - TOP} fill="#5b6cd6" fillOpacity="0.22" />
+        ))}
 
-      {sunVisible && (
-        <circle cx={sun.x} cy={sun.y} r="18" fill="url(#sunGlow)">
-          <animate
-            attributeName="r"
-            values="17;20;17"
-            dur="3s"
-            repeatCount="indefinite"
-          />
-        </circle>
-      )}
+        {/* Area + horizon + arc */}
+        <path d={areaPath} fill="url(#arcFill)" />
+        <line x1={X0 - 20} y1={horizonY} x2={X1 + 20} y2={horizonY} stroke="#ffffff" strokeOpacity="0.35" strokeWidth="1" />
+        <text x={X1 + 22} y={horizonY - 4} textAnchor="end" fill="#ffffff" fillOpacity="0.4" fontSize="11">
+          horizon
+        </text>
+        <path d={arcPath} fill="none" stroke="#ffffff" strokeOpacity="0.75" strokeWidth="2" strokeDasharray="4 6" />
 
-      {laidOut.map(({ marker, point, labelY, timeY, isEndpoint }) => {
-        const leaderY = isEndpoint ? labelY - 12 : timeY + 4;
-        const hasLeader = isEndpoint || Math.abs(point.y - timeY) > 20;
-        return (
-          <g key={marker.label}>
-            {hasLeader && (
-              <line
-                x1={point.x}
-                y1={point.y}
-                x2={point.x}
-                y2={leaderY}
-                stroke="#ffffff"
-                strokeOpacity="0.3"
-                strokeWidth="1"
-              />
-            )}
-            <circle cx={point.x} cy={point.y} r="4" fill="#ffffff" />
+        {/* Now sun */}
+        {sunVisible && (
+          <g>
+            <circle cx={sunX} cy={sunY} r="16" fill="url(#sunGlow)">
+              <animate attributeName="r" values="15;18;15" dur="3s" repeatCount="indefinite" />
+            </circle>
             <text
-              x={point.x}
-              y={labelY}
+              x={sunX}
+              y={sunY - 24}
               textAnchor="middle"
               fill="#ffffff"
-              fillOpacity="0.95"
-              fontSize="14"
-              fontWeight="600"
-              fontFamily="var(--font-geist-sans), system-ui, sans-serif"
+              fontSize="12"
               stroke="#0b1024"
               strokeWidth="3"
               strokeOpacity="0.55"
-              strokeLinejoin="round"
               paintOrder="stroke"
             >
-              {marker.label}
-            </text>
-            <text
-              x={point.x}
-              y={timeY}
-              textAnchor="middle"
-              fill="#ffffff"
-              fillOpacity="0.7"
-              fontSize="13"
-              fontFamily="var(--font-geist-sans), system-ui, sans-serif"
-              stroke="#0b1024"
-              strokeWidth="3"
-              strokeOpacity="0.55"
-              strokeLinejoin="round"
-              paintOrder="stroke"
-            >
-              {formatClock(marker.at, timeZone)}
+              {`${Math.round(sunElevation)}°`}
             </text>
           </g>
-        );
-      })}
-    </svg>
+        )}
+
+        {/* Key markers */}
+        {markers.map((m) => {
+          const t = new Date(m.iso).getTime();
+          const e = elevationAt(anchors, new Date(m.iso));
+          const x = xFor(t);
+          const y = yFor(e);
+          const below = e < 3;
+          const labelY = below ? horizonY + 26 : y - 26;
+          const timeY = below ? horizonY + 42 : y - 12;
+          return (
+            <g key={m.label}>
+              <circle cx={x} cy={y} r="4" fill="#ffffff" />
+              <text x={x} y={labelY} textAnchor="middle" fill="#ffffff" fillOpacity="0.95" fontSize="14" fontWeight="600" stroke="#0b1024" strokeWidth="3" strokeOpacity="0.55" paintOrder="stroke">
+                {m.label}
+              </text>
+              <text x={x} y={timeY} textAnchor="middle" fill="#ffffff" fillOpacity="0.7" fontSize="13" stroke="#0b1024" strokeWidth="3" strokeOpacity="0.55" paintOrder="stroke">
+                {formatClock(new Date(m.iso), timeZone)}
+              </text>
+            </g>
+          );
+        })}
+      </svg>
+
+      <div className="mt-2 flex items-center justify-center gap-4 text-xs text-white/70">
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: "#e2a036" }} />
+          Golden hour
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: "#5b6cd6" }} />
+          Blue hour
+        </span>
+      </div>
+    </div>
   );
 }
